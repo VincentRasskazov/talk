@@ -16,16 +16,16 @@ function ChatHeader({ channelName }) {
         </h3>
       </div>
       <div className="chatHeader__right">
-        <NotificationsIcon />
-        <EditLocationRoundedIcon />
-        <PeopleAltRoundedIcon />
+        <NotificationsIcon onClick={() => alert('Notifications not implemented')} />
+        <EditLocationRoundedIcon onClick={() => alert('Add location not implemented')} />
+        <PeopleAltRoundedIcon onClick={() => alert('People list not implemented')} />
 
         <div className="chatHeader__search">
           <input placeholder="Search" />
-          <SearchRoundedIcon />
+          <SearchRoundedIcon onClick={() => alert('Search not implemented')} />
         </div>
-        <SendRoundedIcon />
-        <HelpRoundedIcon />
+        <SendRoundedIcon onClick={() => alert('Send icon is decorative')} />
+        <HelpRoundedIcon onClick={() => alert('Help not implemented')} />
       </div>
     </div>
   );

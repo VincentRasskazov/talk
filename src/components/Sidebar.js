@@ -39,6 +39,8 @@ function Sidebar() {
       db.collection("channels").add({
         channelName: channelName,
       });
+    } else {
+      // nothing entered
     }
   };
   return (

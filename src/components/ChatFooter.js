@@ -23,7 +23,7 @@ function ChatFooter({ channelName, channelId }) {
   return (
     <div>
       <div className="chat__input">
-        <AddCircleIcon fontSize="large" />
+        <AddCircleIcon fontSize="large" onClick={() => alert('Add attachment not implemented')} style={{cursor:'pointer'}} />
         <form>
           <input
             type="text"
@@ -42,9 +42,9 @@ function ChatFooter({ channelName, channelId }) {
           </button>
         </form>
         <div className="chat__inputIcons">
-          <CardGiftcardIcon fontSize="large" />
-          <GifIcon fontSize="large" />
-          <EmojiEmotionsIcon fontSize="large" />
+          <CardGiftcardIcon fontSize="large" onClick={() => alert('Gifts not implemented')} style={{cursor:'pointer'}} />
+          <GifIcon fontSize="large" onClick={() => alert('GIF picker not implemented')} style={{cursor:'pointer'}} />
+          <EmojiEmotionsIcon fontSize="large" onClick={() => alert('Emoji picker not implemented')} style={{cursor:'pointer'}} />
         </div>
       </div>
     </div>
