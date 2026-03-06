@@ -1,0 +1,27 @@
+.login {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  width: 100%;
+}
+.login > button {
+  width: 300px;
+  background-color: #738adb;
+  color: #eff2f5;
+  font-weight: 800;
+}
+.login > button:hover {
+  background-color: #000000;
+  color: #738adb;
+}
+.login > div > img {
+  object-fit: contain;
+  height: 150px;
+}
+
+/* styling for the Talk heading when no logo image is used */
+.login > div > h1 {
+  font-size: 4rem;
+  color: #738adb;
+  margin: 0;
+}
