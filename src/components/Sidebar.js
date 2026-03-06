@@ -17,17 +17,24 @@ function Sidebar() {
   const user = useSelector(selectUser);
   const [channels, setChannels] = useState([]);
   useEffect(() => {
-    db.collection("channels").onSnapshot((snapshot) =>
-      setChannels(
-        snapshot.docs.map((doc) => ({
-          id: doc.id,
-          channel: doc.data(),
-        }))
-      )
-    );
+    const unsubscribe = db.collection("channels").onSnapshot((snapshot) => {
+      const docs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        channel: doc.data(),
+      }));
+      setChannels(docs);
+
+      // create a default channel if none exist yet
+      if (snapshot.empty) {
+        db.collection("channels").add({
+          channelName: "general",
+        });
+      }
+    });
+    return unsubscribe;
   }, []);
   const handleAddChannel = () => {
-    const channelName = prompt("Enter a new channel name");
+    const channelName = prompt("Enter a name for the new channel");
     if (channelName) {
       db.collection("channels").add({
         channelName: channelName,

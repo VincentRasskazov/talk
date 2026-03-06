@@ -25,6 +25,13 @@
   color: #fff;
 }
 
+/* channels themselves should look clickable */
+.sidebarChannel {
+  cursor: pointer;
+}
+.sidebarChannel:hover {
+  background-color: #3a3c43;
+}
 .sidebar__channelsHeader {
   display: flex;
   justify-content: space-between;
@@ -64,6 +71,7 @@
 }
 .sidebar__voiceIcons > .MuiSvgIcon-root {
   padding: 10px;
+  cursor: pointer;
 }
 .sidebar__profileInfo > h5 {
   color: #fff;
@@ -76,6 +84,7 @@
 }
 .sidebar__profileIcons > .MuiSvgIcon-root {
   padding: 5px;
+  cursor: pointer;
 }
 .sidebar__channelsList {
   height: calc(100vh - 330px);

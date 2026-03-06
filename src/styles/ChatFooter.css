@@ -22,8 +22,21 @@
   flex: 1;
 }
 .chat__inputButton {
-  display: none;
+  /* show the hidden submit button so users understand there is a control */
+  display: inline-block;
+  background: #7289da;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.chat__inputButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .chat__inputIcons > .MuiSvgIcon-root {
   padding: 5px;
+  cursor: pointer;
 }

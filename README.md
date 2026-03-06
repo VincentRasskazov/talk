@@ -1,6 +1,6 @@
 # Talk
 
-A React/Redux chat app inspired by Discord. This repository contains the source code for **Talk**, a Slack/Discord-style messaging application using Firebase as the backend. It is configured for deployment to GitHub Pages at the root URL:
+A React/Redux chat application called **Talk**. It uses Firebase for authentication and realtime data storage. The project is configured for deployment to GitHub Pages at the root URL:
 
 ```
 https://vincentrasskazov.github.io/talk/
@@ -8,7 +8,7 @@ https://vincentrasskazov.github.io/talk/
 
 ## Features
 
-- Google authentication via Firebase Auth
+- Google authentication via Firebase Auth (ensure your GitHub Pages domain is added to Firebase’s authorized domains)
 - Firestore realtime chats and messages
 - Material-UI components for the UI
 - Redux toolkit for state management
