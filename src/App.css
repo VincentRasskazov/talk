@@ -1,8 +1,8 @@
 * { box-sizing: border-box; }
-html, body, #root { height: 100vh; width: 100vw; margin: 0; padding: 0; background-color: #313338; color: #dbdee1; font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+html, body, #root { height: 100dvh; width: 100vw; margin: 0; padding: 0; background-color: #313338; color: #dbdee1; font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
 ::selection { background: var(--accent-color, #5865F2); color: white; }
 
-.app-wrapper { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; background-color: #1e1f22; }
+.app-wrapper { display: flex; flex-direction: column; height: 100dvh; width: 100vw; overflow: hidden; background-color: #1e1f22; }
 .guest-banner { display: flex; align-items: center; justify-content: center; background-color: #f0b232; color: #000; font-size: 13px; font-weight: 700; padding: 8px; flex-shrink: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; letter-spacing: 0.5px; }
 .discord-layout { display: flex; width: 100%; flex-grow: 1; position: relative; overflow: hidden; background-color: #313338; }
 
@@ -124,7 +124,7 @@ main::-webkit-scrollbar-track { background-color: #2b2d31; }
 .reaction-pill.reacted { background: rgba(88,101,242,0.15); border-color: var(--accent-color, #5865F2); color: var(--accent-color, #5865F2); }
 
 /* --- INPUT BAR POLISH --- */
-.form-wrapper { padding: 0 16px 24px 16px; position: relative; flex-shrink: 0; background-color: #313338; }
+.form-wrapper { padding: 0 16px calc(24px + env(safe-area-inset-bottom)) 16px; position: relative; flex-shrink: 0; background-color: #313338; }
 form { display: flex; align-items: center; background-color: #383a40; border-radius: 8px; padding: 0 16px 0 12px; min-height: 48px; margin-top: 8px; transition: all 0.2s ease; border: 1px solid transparent; }
 form:focus-within { background-color: #404249; border-color: rgba(255,255,255,0.05); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 form input[type="text"] { flex-grow: 1; background: transparent; border: none; color: #dbdee1; font-size: 15px; outline: none; height: 48px; padding: 0 12px; font-family: inherit; }
