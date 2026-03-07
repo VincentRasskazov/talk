@@ -17,10 +17,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'  # <-- THIS IS THE MAGIC SPEED UP LINE
+          cache: 'npm'  
 
-      - name: Fast Install Dependencies
-        run: npm ci     # <-- Much faster than 'npm install'
+      - name: Install Dependencies
+        run: npm install   # <-- Changed back to 'install' so it auto-fixes the lockfile
 
       - name: Build the App
         run: |
