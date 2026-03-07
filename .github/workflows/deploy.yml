@@ -13,14 +13,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js with Cache
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'  
+          cache: 'npm'
 
-      - name: Install Dependencies
-        run: npm install   # <-- Changed back to 'install' so it auto-fixes the lockfile
+      - name: Turbo Install Dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the App
         run: |
