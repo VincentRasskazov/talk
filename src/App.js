@@ -419,7 +419,13 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
 
-  const toggleSidebar = () => window.innerWidth <= 768 ? closeAllMenus() : setChannelsOpenPC(!channelsOpenPC);
+  const toggleSidebar = () => { 
+    if (window.innerWidth <= 768) {
+      setMobileNavOpen(true); 
+    } else {
+      setChannelsOpenPC(!channelsOpenPC); 
+    }
+  };
 
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
