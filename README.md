@@ -1,3 +1,8 @@
+### NOTE: this is not meant to be for normal coders. it is purely customised for my website. u can tinker around but u have been warned
+
+
+
+
 # Talk
 
 A React/Redux chat application called **Talk**. It uses Firebase for authentication and realtime data storage. The project is configured for deployment to GitHub Pages at the root URL:
