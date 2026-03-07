@@ -58,7 +58,6 @@ function useTheme() {
   return [themeColor, setThemeColor];
 }
 
-// EMPTY STATE UI COMPONENTS
 const EmptyServerState = () => (
   <div className="empty-state">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
@@ -171,7 +170,7 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   return (
     <div className="overlay" onClick={close} style={{zIndex: 1005}}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{paddingTop: 0}}>
-        <button onClick={close} style={{position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)', color:'#fff', borderRadius:'50%', width:28, height:28, zIndex:10, display:'flex', justifyContent:'center', alignItems:'center', padding:0}}>✕</button>
+        <button onClick={close} style={{position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)', color:'#fff', borderRadius:'50%', width:24, height:24, zIndex:10, display:'flex', justifyContent:'center', alignItems:'center', padding:0}}>✕</button>
         <div className="profile-banner" style={{background: userProfile.bannerURL ? 'transparent' : themeColor, backgroundImage: userProfile.bannerURL ? `url(${userProfile.bannerURL})` : 'none'}}>
           <img src={userProfile.photoURL || DEFAULT_AVATAR} className="profile-avatar" alt="pfp" />
         </div>
@@ -217,26 +216,39 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
   const [allDMs] = useCollectionData(dmsQuery, { idField: 'id' });
 
-  const servers = allServers ? allServers.filter(s => {
-    if (isAdmin) return true;
-    if (!s.isPrivate) return true;
-    if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
-    return false;
-  }) : [];
+  let servers = [];
+  if (allServers) {
+    servers = allServers.filter(s => {
+      if (isAdmin) return true;
+      if (!s.isPrivate) return true;
+      if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
+      return false;
+    });
+  }
 
   let currentUserData = null;
   if (allUsers && auth.currentUser) {
     currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
   }
 
+  useEffect(() => { 
+    if (servers.length > 0 && !currentServer && view === 'servers') {
+      setCurrentServer(servers[0]); 
+    }
+  }, [servers, currentServer, view]);
+
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
-    const uid1 = auth.currentUser.uid; const uid2 = targetUser.uid;
+    const uid1 = auth.currentUser.uid; 
+    const uid2 = targetUser.uid;
     const dmId = uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
     const dmRef = firestore.collection('dms').doc(dmId);
     const doc = await dmRef.get();
-    if (!doc.exists) await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-    setView('dms'); setActiveDM({ id: dmId, target: targetUser });
+    if (!doc.exists) {
+      await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+    setView('dms'); 
+    setActiveDM({ id: dmId, target: targetUser });
   };
 
   const closeAllMenus = () => setMobileNavOpen(false);
@@ -249,7 +261,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       
       {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
 
-      <div className="sidebar" style={{paddingTop: 12}}>
+      <div className="sidebar">
         <div className="server-icon-wrapper" onClick={() => { setView('dms'); setMobileNavOpen(true); setCurrentServer(null); }}>
           <img src={DEFAULT_AVATAR} className={`server-icon ${view === 'dms' ? 'active' : ''}`} alt="DM" style={{borderRadius: view==='dms'?16:24}} />
         </div>
@@ -281,9 +293,9 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       </div>
 
       {view === 'servers' && currentServer ? (
-        <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} />
+        <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} />
       ) : view === 'dms' && !isGuest ? (
-        <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
+        <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
       ) : (
         <EmptyServerState />
       )}
@@ -291,7 +303,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   );
 }
 
-function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage }) {
+function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage }) {
   const dummy = useRef();
   const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
@@ -301,12 +313,23 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
 
-  useEffect(() => { if (channels && channels.length > 0 && !channel) setChannel(channels[0]); }, [channels, channel, setChannel]);
+  useEffect(() => { 
+    if (channels && channels.length > 0 && !channel) {
+      setChannel(channels[0]); 
+    }
+  }, [channels, channel, setChannel]);
 
-  const toggleSidebar = () => { window.innerWidth <= 768 ? closeAllMenus() : setChannelsOpenPC(!channelsOpenPC); };
+  const toggleSidebar = () => { 
+    if (window.innerWidth <= 768) {
+      setMobileNavOpen(true); 
+    } else {
+      setChannelsOpenPC(!channelsOpenPC); 
+    }
+  };
 
   const sendMsg = async (e) => {
-    e.preventDefault(); if(isGuest) return onLoginClick();
+    e.preventDefault(); 
+    if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
     if (msgsRef && auth.currentUser) {
       await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
@@ -330,13 +353,16 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     }; reader.readAsDataURL(f);
   };
 
-  const members = allUsers ? allUsers.filter(u => {
-    if (u.banned) return false;
-    if (isAdmin) return true;
-    if (!server.isPrivate) return true;
-    if (server.members && server.members.includes(u.uid)) return true;
-    return false;
-  }) : [];
+  let members = [];
+  if (allUsers) {
+    members = allUsers.filter(u => {
+      if (u.banned) return false;
+      if (isAdmin) return true;
+      if (!server.isPrivate) return true;
+      if (server.members && server.members.includes(u.uid)) return true;
+      return false;
+    });
+  }
 
   return (
     <>
@@ -413,7 +439,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   )
 }
 
-function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
+function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
@@ -451,18 +477,27 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     }; reader.readAsDataURL(f);
   };
 
+  let sortedDMs = [];
+  if (dms) {
+    sortedDMs = [...dms].sort((a,b) => {
+      const timeA = (a && a.updatedAt && a.updatedAt.toMillis) ? a.updatedAt.toMillis() : 0;
+      const timeB = (b && b.updatedAt && b.updatedAt.toMillis) ? b.updatedAt.toMillis() : 0;
+      return timeB - timeA;
+    });
+  }
+
   return (
     <>
       <div className={`channels ${mobileNavOpen ? 'open' : ''} ${!channelsOpenPC ? 'closed' : ''}`}>
         <div className="channels-header"><h3>Direct Messages</h3></div>
         <div className="channel-list">
-          {dms && dms.sort((a,b)=>(b.updatedAt || 0) - (a.updatedAt || 0)).map(dm => {
+          {sortedDMs.map(dm => {
             const otherUid = dm.users.find(id => auth.currentUser && id !== auth.currentUser.uid);
             const otherUser = allUsers ? allUsers.find(u => u.uid === otherUid) : null;
             if(!otherUser) return null;
             return (
               <div key={dm.id} className={`channel ${activeDM && activeDM.id===dm.id ? 'active':''}`} onClick={()=>{setActiveDM({id: dm.id, target: otherUser}); closeAllMenus();}}>
-                <div style={{display:'flex', alignItems:'center', gap:10}}><img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />{otherUser.displayName}</div>
+                <div style={{display:'flex', alignItems:'center', gap:8}}><img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />{otherUser.displayName}</div>
               </div>
             )
           })}
@@ -604,7 +639,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
               <h2 style={{color: '#fff', marginTop: 0}}>My Account</h2>
               <div className="settings-card">
                 <label>DISPLAY NAME</label><input value={name} onChange={e=>setName(e.target.value)} />
-                <label style={{marginTop: 16}}>EMAIL</label><input value={auth.currentUser?.email} disabled style={{opacity: 0.5}} />
+                <label style={{marginTop: 16}}>EMAIL</label><input value={auth.currentUser ? auth.currentUser.email : ''} disabled style={{opacity: 0.5}} />
               </div>
               <div className="settings-card">
                 <h3 style={{color:'#fff', margin: 0}}>Authentication</h3>
@@ -681,7 +716,11 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                   <div className="admin-server-item" key={s.id}>
                     <strong style={{color: '#fff', fontSize: 15}}>{s.name}</strong>
                     <button className="ban-btn" onClick={async () => {
-                      if(window.confirm(`Delete ${s.name} entirely?`)) await firestore.collection('servers').doc(s.id).delete();
+                      if(window.confirm(`Delete ${s.name} entirely?`)) {
+                        await firestore.collection('servers').doc(s.id).delete();
+                        alert(`${s.name} has been permanently deleted.`);
+                        window.location.reload(); 
+                      }
                     }}>Force Delete</button>
                   </div>
                 ))}
