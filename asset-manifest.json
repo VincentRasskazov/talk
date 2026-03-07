@@ -1,22 +1,22 @@
 {
   "files": {
-    "main.css": "/talk/static/css/main.b3b107a5.chunk.css",
-    "main.js": "/talk/static/js/main.71c17225.chunk.js",
-    "main.js.map": "/talk/static/js/main.71c17225.chunk.js.map",
-    "runtime-main.js": "/talk/static/js/runtime-main.f6ba2203.js",
-    "runtime-main.js.map": "/talk/static/js/runtime-main.f6ba2203.js.map",
-    "static/js/2.ed88d9b9.chunk.js": "/talk/static/js/2.ed88d9b9.chunk.js",
-    "static/js/2.ed88d9b9.chunk.js.map": "/talk/static/js/2.ed88d9b9.chunk.js.map",
+    "main.js": "/talk/static/js/main.a1695610.chunk.js",
+    "main.js.map": "/talk/static/js/main.a1695610.chunk.js.map",
+    "runtime-main.js": "/talk/static/js/runtime-main.98282b47.js",
+    "runtime-main.js.map": "/talk/static/js/runtime-main.98282b47.js.map",
+    "static/js/2.2845a01c.chunk.js": "/talk/static/js/2.2845a01c.chunk.js",
+    "static/js/2.2845a01c.chunk.js.map": "/talk/static/js/2.2845a01c.chunk.js.map",
     "index.html": "/talk/index.html",
-    "precache-manifest.7b1c985d00e457fc1bf62001698ee10d.js": "/talk/precache-manifest.7b1c985d00e457fc1bf62001698ee10d.js",
+    "precache-manifest.f3d32195ccd87aa39cc2e25da241758c.js": "/talk/precache-manifest.f3d32195ccd87aa39cc2e25da241758c.js",
     "service-worker.js": "/talk/service-worker.js",
-    "static/css/main.b3b107a5.chunk.css.map": "/talk/static/css/main.b3b107a5.chunk.css.map",
-    "static/js/2.ed88d9b9.chunk.js.LICENSE.txt": "/talk/static/js/2.ed88d9b9.chunk.js.LICENSE.txt"
+    "static/js/2.2845a01c.chunk.js.LICENSE.txt": "/talk/static/js/2.2845a01c.chunk.js.LICENSE.txt",
+    "static/media/discord.svg": "/talk/static/media/discord.09f27433.svg",
+    "static/media/discordBackground.jpg": "/talk/static/media/discordBackground.fd91131e.jpg",
+    "static/media/red-bar.svg": "/talk/static/media/red-bar.12426016.svg"
   },
   "entrypoints": [
-    "static/js/runtime-main.f6ba2203.js",
-    "static/js/2.ed88d9b9.chunk.js",
-    "static/css/main.b3b107a5.chunk.css",
-    "static/js/main.71c17225.chunk.js"
+    "static/js/runtime-main.98282b47.js",
+    "static/js/2.2845a01c.chunk.js",
+    "static/js/main.a1695610.chunk.js"
   ]
 }
