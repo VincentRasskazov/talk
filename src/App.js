@@ -839,8 +839,17 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   const save = async () => { 
     if (auth.currentUser) {
       try {
-        await firestore.collection('users').doc(auth.currentUser.uid).set({ displayName: name, bio, statusText, pronouns, photoURL: photo, bannerURL }, {merge:true}); 
-        await auth.currentUser.updateProfile({ displayName: name, photoURL: photo }); 
+        // We add || '' to every field so Firebase never sees 'undefined'
+        await firestore.collection('users').doc(auth.currentUser.uid).set({ 
+          displayName: name || '', 
+          bio: bio || '', 
+          statusText: statusText || '', 
+          pronouns: pronouns || '', 
+          photoURL: photo || DEFAULT_AVATAR, 
+          bannerURL: bannerURL || '' 
+        }, {merge:true}); 
+        
+        await auth.currentUser.updateProfile({ displayName: name || '', photoURL: photo || DEFAULT_AVATAR }); 
         alert("Profile saved successfully!");
       } catch (err) {
         if (checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded. Try again tomorrow.");
