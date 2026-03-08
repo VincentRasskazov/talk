@@ -829,12 +829,14 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
 
 function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, allServers }) {
   const [tab, setTab] = useState('acc'); 
-  const [name, setName] = useState(userDoc ? userDoc.displayName : ''); 
-  const [bio, setBio] = useState(userDoc ? userDoc.bio : '');
-  const [statusText, setStatusText] = useState(userDoc ? userDoc.statusText : '');
-  const [pronouns, setPronouns] = useState(userDoc ? userDoc.pronouns : '');
-  const [photo, setPhoto] = useState(userDoc ? userDoc.photoURL : DEFAULT_AVATAR);
-  const [bannerURL, setBannerURL] = useState(userDoc ? userDoc.bannerURL : '');
+  const [name, setName] = useState((userDoc && userDoc.displayName) || ''); 
+  const [bio, setBio] = useState((userDoc && userDoc.bio) || '');
+  const [statusText, setStatusText] = useState((userDoc && userDoc.statusText) || '');
+  const [pronouns, setPronouns] = useState((userDoc && userDoc.pronouns) || '');
+  const [photo, setPhoto] = useState((userDoc && userDoc.photoURL) || DEFAULT_AVATAR);
+  const [bannerURL, setBannerURL] = useState((userDoc && userDoc.bannerURL) || '');
+
+  const save = async () => {
 
   const save = async () => { 
     if (auth.currentUser) {
