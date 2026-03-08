@@ -825,44 +825,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                   </div>
                   <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('reverseLayout') === 'true'} onChange={(e) => {
                     localStorage.setItem('reverseLayout', e.target.checked);
-                    window.location.reload(); // Instantly reloads to apply layout shift
-                  }} />
-                </div>
-              </div>
-            </>
-          )}
-
-              <div className="settings-card">
-                <h3 style={{color:'#fff', margin:0}}>Appearance Tweaks</h3>
-                <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize how the app feels on your device.</p>
-                
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
-                  <strong style={{color:'#dbdee1', fontSize:14}}>Compact Message Mode</strong>
-                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('compactMode') === 'true'} onChange={(e) => {
-                    localStorage.setItem('compactMode', e.target.checked);
-                    if(e.target.checked) document.body.classList.add('compact-mode');
-                    else document.body.classList.remove('compact-mode');
-                  }} />
-                </div>
-
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
-                  <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Terminal UI)</strong>
-                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
-                    localStorage.setItem('monoFont', e.target.checked);
-                    if(e.target.checked) document.body.classList.add('hacker-mode');
-                    else document.body.classList.remove('hacker-mode');
-                  }} />
-                </div>
-
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
-                  <div style={{display: 'flex', flexDirection: 'column'}}>
-                    <strong style={{color:'#dbdee1', fontSize:14}}>Reverse Layout</strong>
-                    <span style={{color: '#80848e', fontSize: 11}}>Moves sidebars to the right</span>
-                  </div>
-                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('reverseLayout') === 'true'} onChange={(e) => {
-                    localStorage.setItem('reverseLayout', e.target.checked);
-                    alert("Please refresh the page to apply layout changes!");
-                    window.location.reload();
+                    window.location.reload(); 
                   }} />
                 </div>
               </div>
