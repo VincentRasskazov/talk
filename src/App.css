@@ -250,3 +250,10 @@ form input[type="text"]::placeholder { color: #80848e; }
   letter-spacing: 0.5px; 
   text-align: center;
 }
+/* --- CUSTOM SETTINGS STYLES --- */
+.compact-mode .message { padding: 2px 16px 2px 72px; margin-top: 4px; }
+.compact-mode .message-avatar { width: 32px; height: 32px; min-width: 32px; top: 2px; }
+.compact-mode .msg-author-row { margin-bottom: 0px; }
+
+/* Custom Checkbox styling for Settings */
+.settings-checkbox { width: 18px !important; height: 18px !important; cursor: pointer; accent-color: var(--accent-color, #5865F2); }
