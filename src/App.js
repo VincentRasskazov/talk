@@ -701,6 +701,19 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const callRef = activeDM ? firestore.collection('calls').doc(activeDM.id) : null;
+  const [callData] = useDocumentData(callRef);
+  const [inCall, setInCall] = useState(false);
+  const [isCaller, setIsCaller] = useState(false);
+
+  // --- INCOMING CALL NOTIFICATION ---
+  useEffect(() => {
+    if (callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '')) {
+      if (window.Notification && Notification.permission === 'granted') {
+         new Notification("Incoming Video Call 📞", { body: activeDM.target.displayName + " is calling you on Talk!", requireInteraction: true });
+      }
+    }
+  }, [callData]);
   const [lastMsgId, setLastMsgId] = useState(null);
 
   useEffect(() => {
@@ -839,7 +852,20 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
                 <div className="header-title">@{activeDM.target.displayName}</div>
               </div>
+              <button className="settings-btn" onClick={() => { setInCall(true); setIsCaller(true); }} style={{background: '#23a559', color: 'white', borderRadius: '50%', width: 32, height: 32, padding: 0, fontSize: 14}} title="Start Video Call">📞</button>
             </header>
+
+            {callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '') && (
+              <div className="incoming-call-banner">
+                <span>📞 Incoming video call from {activeDM.target.displayName}...</span>
+                <div style={{display: 'flex', gap: '8px'}}>
+                  <button onClick={() => { setInCall(true); setIsCaller(false); }} style={{background: '#fff', color: '#23a559', padding: '6px 16px', borderRadius: 16}}>Answer</button>
+                  <button onClick={() => callRef.set({status: 'ended'})} style={{background: '#da373c', color: '#fff', padding: '6px 16px', borderRadius: 16, border: 'none'}}>Decline</button>
+                </div>
+              </div>
+            )}
+
+            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} />}
             <main>
               {messages && messages.map(m => {
                  const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
@@ -1274,4 +1300,115 @@ function ServerSettingsModal({ server, close, theme }) {
       </div>
     </div>
   )
+}
+
+
+// --- WEBRTC VIDEO ENGINE ---
+const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
+
+function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName }) {
+  const localRef = useRef();
+  const remoteRef = useRef();
+  const pc = useRef(new RTCPeerConnection(rtcConfig));
+  const [status, setStatus] = useState("Connecting to camera...");
+
+  useEffect(() => {
+    const setupCall = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (localRef.current) localRef.current.srcObject = stream;
+        stream.getTracks().forEach(track => pc.current.addTrack(track, stream));
+
+        pc.current.ontrack = (event) => {
+          if (remoteRef.current) remoteRef.current.srcObject = event.streams[0];
+          setStatus("Connected securely to " + otherName);
+        };
+
+        const callDoc = firestore.collection('calls').doc(dmId);
+        const offerCandidates = callDoc.collection('offerCandidates');
+        const answerCandidates = callDoc.collection('answerCandidates');
+
+        pc.current.onicecandidate = event => {
+          if (event.candidate) {
+            if (isCaller) offerCandidates.add(event.candidate.toJSON());
+            else answerCandidates.add(event.candidate.toJSON());
+          }
+        };
+
+        if (isCaller) {
+          setStatus("Ringing " + otherName + "...");
+          // Clean up old call data first
+          const oldOffers = await offerCandidates.get();
+          oldOffers.forEach(doc => doc.ref.delete());
+          const oldAnswers = await answerCandidates.get();
+          oldAnswers.forEach(doc => doc.ref.delete());
+
+          const offerDescription = await pc.current.createOffer();
+          await pc.current.setLocalDescription(offerDescription);
+          await callDoc.set({ offer: { type: offerDescription.type, sdp: offerDescription.sdp }, callerName: myName, status: 'ringing' });
+
+          callDoc.onSnapshot(snapshot => {
+            const data = snapshot.data();
+            if (data && data.answer && !pc.current.currentRemoteDescription) {
+              pc.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+            if (data && data.status === 'ended') endCall();
+          });
+
+          answerCandidates.onSnapshot(snapshot => {
+            snapshot.docChanges().forEach(change => {
+              if (change.type === 'added') pc.current.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            });
+          });
+        } else {
+          setStatus("Connecting...");
+          const callData = (await callDoc.get()).data();
+          await pc.current.setRemoteDescription(new RTCSessionDescription(callData.offer));
+          const answerDescription = await pc.current.createAnswer();
+          await pc.current.setLocalDescription(answerDescription);
+          await callDoc.update({ answer: { type: answerDescription.type, sdp: answerDescription.sdp }, status: 'connected' });
+
+          offerCandidates.onSnapshot(snapshot => {
+            snapshot.docChanges().forEach(change => {
+              if (change.type === 'added') pc.current.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            });
+          });
+
+          callDoc.onSnapshot(snapshot => {
+            const data = snapshot.data();
+            if (data && data.status === 'ended') endCall();
+          });
+        }
+      } catch (err) {
+        setStatus("Camera/Mic Error: " + err.message);
+      }
+    };
+
+    setupCall();
+    return () => endCall();
+  }, []);
+
+  const endCall = async () => {
+    pc.current.close();
+    if (localRef.current && localRef.current.srcObject) {
+      localRef.current.srcObject.getTracks().forEach(t => t.stop());
+    }
+    await firestore.collection('calls').doc(dmId).set({ status: 'ended' });
+    closeCall();
+  };
+
+  return (
+    <div className="video-overlay">
+      <div style={{position: 'absolute', top: 20, left: 20, color: 'white', zIndex: 100, background: 'rgba(0,0,0,0.6)', padding: '8px 16px', borderRadius: 20, fontSize: 14, fontWeight: 'bold'}}>
+        🔒 {status}
+      </div>
+      <div className="video-grid">
+        <video ref={remoteRef} className="remote-video" autoPlay playsInline />
+        <video ref={localRef} className="local-video" autoPlay playsInline muted />
+      </div>
+      <div className="call-controls">
+        <button className="call-btn hangup" onClick={endCall}>✕</button>
+      </div>
+    </div>
+  );
 }
