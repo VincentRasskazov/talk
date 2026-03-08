@@ -96,7 +96,6 @@ function useTheme() {
 }
 
 // --- LOAD SAVED SETTINGS ---
-// --- LOAD SAVED SETTINGS ---
 if (localStorage.getItem('compactMode') === 'true') document.body.classList.add('compact-mode');
 if (localStorage.getItem('monoFont') === 'true') document.body.classList.add('hacker-mode');
 
@@ -159,11 +158,12 @@ export default function App() {
   const [themeColor, setThemeColor] = useTheme();
   const [showAuth, setShowAuth] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
-  const [consoleQuotaError, setConsoleQuotaError] = useState(false); // <-- ADD THIS LINE
+  const [consoleQuotaError, setConsoleQuotaError] = useState(false);
 
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
   const [userDoc, userLoading, userError] = useDocumentData(userRef);
-// --- CONSOLE WIRETAP ---
+
+  // --- CONSOLE WIRETAP ---
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
@@ -591,9 +591,12 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
             </header>
             <main>
-              {messages && messages.map(m => (
-                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} />
-              ))}
+              {messages && messages.map(m => {
+                const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
+                return (
+                  <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} />
+                );
+              })}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -603,10 +606,14 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
                   <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@deepseek</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@copilot</span>
                   <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
-                  <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@chatgpt</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@llama</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@qwen</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@gpt5</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@venice</span>
                 </div>
               </div>
 
@@ -785,9 +792,12 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               </div>
             </header>
             <main>
-              {messages && messages.map(m => (
-                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
-              ))}
+              {messages && messages.map(m => {
+                 const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
+                 return (
+                   <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(authorData || m)} setZoomImage={setZoomImage} />
+                 );
+              })}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -797,10 +807,14 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
                   <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@deepseek</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@copilot</span>
                   <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
-                  <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@chatgpt</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@llama</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@qwen</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@gpt5</span>
+                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@venice</span>
                 </div>
               </div>
 
@@ -909,11 +923,9 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   const [photo, setPhoto] = useState((userDoc && userDoc.photoURL) || DEFAULT_AVATAR);
   const [bannerURL, setBannerURL] = useState((userDoc && userDoc.bannerURL) || '');
 
-
   const save = async () => { 
     if (auth.currentUser) {
       try {
-        // We add || '' to every field so Firebase never sees 'undefined'
         await firestore.collection('users').doc(auth.currentUser.uid).set({ 
           displayName: name || '', 
           bio: bio || '', 
