@@ -311,3 +311,26 @@ form input[type="text"]::placeholder { color: #80848e; }
   font-weight: bold;
   box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
+/* --- MENTION MENU --- */
+.mention-menu { 
+  position: absolute; 
+  bottom: calc(100% - 10px); 
+  left: 16px; 
+  background: #2b2d31; 
+  border: 1px solid #1e1f22; 
+  border-radius: 8px; 
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3); 
+  width: 320px; 
+  max-height: 250px; 
+  overflow-y: auto; 
+  z-index: 100; 
+  display: flex; 
+  flex-direction: column; 
+  animation: slideUpFade 0.2s ease; 
+}
+.mention-menu::-webkit-scrollbar { width: 4px; }
+.mention-menu::-webkit-scrollbar-thumb { background-color: #1a1b1e; border-radius: 4px; }
+.mention-category { padding: 8px 12px 4px 12px; font-size: 11px; font-weight: 800; color: #949ba4; background: #1e1f22; text-transform: uppercase; letter-spacing: 0.5px; }
+.mention-item { padding: 8px 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; color: #dbdee1; font-size: 14px; transition: 0.15s; }
+.mention-item:hover { background: #35373c; }
+.mention-item img { width: 24px; height: 24px; min-width: 24px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
