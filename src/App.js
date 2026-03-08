@@ -20,6 +20,12 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
+// --- ENABLE OFFLINE CACHING (SAVES 90% QUOTA) ---
+firestore.enablePersistence({ synchronizeTabs: true })
+  .catch((err) => {
+    if (err.code === 'failed-precondition') console.warn('Multiple tabs open, persistence enabled in first tab.');
+    else if (err.code === 'unimplemented') console.warn('Browser lacks offline support.');
+  });
 const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI5Y2VkIiBzdHJva2Utd2lkdGg9IjEyIi8+PHRleHQgeD0iNTMiIHk9Ijg1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiM4YjljZWQiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnQ8L3RleHQ+PC9zdmc+";
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
