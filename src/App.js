@@ -872,17 +872,22 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
               <div className="settings-card">
                 <label>DISPLAY NAME</label><input value={name} onChange={e=>setName(e.target.value)} />
                 <label style={{marginTop: 16}}>EMAIL</label><input value={auth.currentUser ? auth.currentUser.email : ''} disabled style={{opacity: 0.5}} />
+              </div>
               <div className="settings-card">
-                <label>DISPLAY NAME</label><input value={name} onChange={e=>setName(e.target.value)} />
-                <label style={{marginTop: 16}}>EMAIL</label><input value={auth.currentUser ? auth.currentUser.email : ''} disabled style={{opacity: 0.5}} />
-                
-                <button className="save-btn" onClick={() => {
-                  auth.sendPasswordResetEmail(auth.currentUser.email)
-                    .then(() => alert('Password reset email sent! Please check your inbox (and spam folder).'))
-                    .catch(e => alert(e.message));
-                }} style={{background:'#2b2d31', color:'#dbdee1', border: '1px solid #404249', width: 'fit-content', marginTop: '16px'}}>
-                  Send Password Reset Email
-                </button>
+                <h3 style={{color:'#fff', margin: 0}}>Authentication</h3>
+                <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Manage your password or link a Google account.</p>
+                <div style={{display: 'flex', gap: '12px', flexWrap: 'wrap'}}>
+                  <button className="save-btn" onClick={() => {
+                    auth.sendPasswordResetEmail(auth.currentUser.email)
+                      .then(() => alert('Password reset email sent! Please check your inbox (and spam folder).'))
+                      .catch(e => alert(e.message));
+                  }} style={{background:'#2b2d31', color:'#dbdee1', border: '1px solid #404249', width: 'fit-content'}}>
+                    Reset Password
+                  </button>
+                  <button className="save-btn" onClick={() => auth.currentUser.linkWithPopup(new firebase.auth.GoogleAuthProvider()).then(()=>alert('Linked!')).catch(e=>alert(e.message))} style={{background:'#f2f3f5', color:'#1e1f22', width: 'fit-content'}}>
+                    Link Google Account
+                  </button>
+                </div>
               </div>
             </>
           )}
