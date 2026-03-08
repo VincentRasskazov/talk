@@ -321,6 +321,21 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const [userCalls] = useCollectionData(callsQuery, { idField: 'id' });
   const incomingCall = userCalls ? userCalls.find(c => c.status === 'ringing') : null;
 
+  // --- VERSION CHECKER ---
+  useEffect(() => {
+    fetch('/?t=' + new Date().getTime())
+      .then(res => res.text())
+      .then(html => {
+        const storedHtml = localStorage.getItem('app_version_html');
+        if (storedHtml && storedHtml !== html) {
+           localStorage.setItem('app_version_html', html);
+           window.location.reload(true); // Hard refresh!
+        } else {
+           localStorage.setItem('app_version_html', html);
+        }
+      }).catch(e => console.warn('Version check failed'));
+  }, []);
+
   useEffect(() => {
     if (incomingCall && window.Notification && Notification.permission === 'granted') {
       new Notification("Incoming Video Call 📞", { body: incomingCall.callerName + " is calling you on Talk!" });
@@ -405,8 +420,6 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
                 <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
                   {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
-                  {(isAdmin || (s.owner && auth.currentUser && s.owner === auth.currentUser.uid)) && <div className="server-actions">
-                    <button className="action-btn edit-btn" onClick={(e) => { e.stopPropagation(); setEditingServer(s); }}>✎</button>
                   </div>}
                 </div>
               </div>
@@ -445,7 +458,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
         </div>
 
         {view === 'servers' && currentServer ? (
-          <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} />
+          <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} editServer={() => setEditingServer(currentServer)} />
         ) : view === 'dms' && !isGuest ? (
           <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
         ) : (
@@ -456,8 +469,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   );
 }
 
-function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage }) {
-  const dummy = useRef();
+function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {  const dummy = useRef();
   const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null);
@@ -594,8 +606,13 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
       <div className={`channels ${mobileNavOpen ? 'open' : ''} ${!channelsOpenPC ? 'closed' : ''}`}>
         <div className="channels-header" style={server.bannerURL ? {backgroundImage: `url(${server.bannerURL})`} : {}}>
           {server.bannerURL && <div className="channels-header-overlay"></div>}
-          <h3 style={{position: 'relative', zIndex: 1, textShadow: server.bannerURL ? '0 2px 4px rgba(0,0,0,0.9)' : 'none', color: server.bannerURL ? '#fff' : '#f2f3f5'}}>{server.name}</h3>
-          {isAdmin && <button className="add-btn" onClick={async()=>{
+          <div style={{position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
+            <h3 style={{textShadow: server.bannerURL ? '0 2px 4px rgba(0,0,0,0.9)' : 'none', color: server.bannerURL ? '#fff' : '#f2f3f5', margin: 0}}>{server.name}</h3>
+            {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && (
+              <button onClick={editServer} style={{background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px'}} title="Server Settings">⚙️</button>
+            )}
+          </div>
+          {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && <button className="add-btn" onClick={async()=>{
             const n=prompt("Channel Name:"); 
             if(n) {
               try { await channelsRef.add({name: n.toLowerCase(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}) }
@@ -607,7 +624,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           {channels && channels.map(c => (
             <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
               <span className="channel-name"><span className="hash-icon">#</span> {c.name}</span>
-              {isAdmin && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+              {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
             </div>
           ))}
         </div>
@@ -680,8 +697,10 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
-                  <input type="file" style={{display:'none'}} onChange={handleFile} />
+                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
+                    +
+                    <input type="file" style={{display:'none'}} onChange={handleFile} />
+                  </label>
                 </div>
                 <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
@@ -921,8 +940,10 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
-                  <input type="file" style={{display:'none'}} onChange={handleFile} />
+                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
+                    +
+                    <input type="file" style={{display:'none'}} onChange={handleFile} />
+                  </label>
                 </div>
                 <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
