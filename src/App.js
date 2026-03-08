@@ -23,6 +23,26 @@ const firestore = firebase.firestore();
 const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI5Y2VkIiBzdHJva2Utd2lkdGg9IjEyIi8+PHRleHQgeD0iNTMiIHk9Ijg1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiM4YjljZWQiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnQ8L3RleHQ+PC9zdmc+";
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
+// --- AI API INTEGRATION ---
+const BACKEND_URL = "https://backendai-ablv.onrender.com";
+const SECRET_SALT = "vincent-gemini-ultra-secure-salt-2026-x";
+const AI_MODELS = {
+  '@deepseek': 'deepai-deepseek',
+  '@llama': 'deepai-llama',
+  '@qwen': 'deepai-qwen',
+  '@copilot': 'copilot',
+  '@chatgpt': 'g4f',
+  '@gpt5': 'useai'
+};
+
+async function generateToken(msgId) {
+  const raw = msgId + SECRET_SALT;
+  const enc = new TextEncoder();
+  const data = enc.encode(raw);
+  const hash = await window.crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // --- ERROR HANDLING HELPER ---
 const checkQuotaError = (err) => {
   if (!err) return false;
@@ -424,13 +444,56 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     e.preventDefault(); 
     if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
+
+    const text = form.trim();
+    let aiModel = null;
+    let aiPrompt = null;
+    let triggerUsed = null;
+
+    // Check if the user is summoning the AI
+    for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
+      if (text.toLowerCase().startsWith(trigger + ' ')) {
+        aiModel = modelId;
+        triggerUsed = trigger;
+        aiPrompt = text.substring(trigger.length).trim();
+        break;
+      }
+    }
+
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        // 1. Send the user's message normally
+        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
         setForm(''); setFile(null); 
         if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+
+        // 2. If an AI was summoned, fetch the response and post it as the bot!
+        if (aiModel && aiPrompt) {
+          const msgId = window.crypto.randomUUID();
+          const token = await generateToken(msgId);
+
+          const response = await fetch(`${BACKEND_URL}/chat`, {
+            method: 'POST',
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: msgId, token: token, message: "User: " + aiPrompt, model: aiModel })
+          });
+
+          if (!response.ok) throw new Error("AI failed to respond.");
+          const aiResult = await response.text();
+
+          await msgsRef.add({
+            text: aiResult,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            uid: 'vincent-ai-bot',
+            photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI',
+            displayName: `VincentAI (${triggerUsed})`
+          });
+          if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+        }
+
       } catch (err) {
         if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
+        else console.error(err);
       }
     }
   };
@@ -510,6 +573,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
+              <div className="ai-tooltip">
+                ✨ <strong>AI Mode:</strong> Type <span>@deepseek</span>, <span>@copilot</span>, or <span>@chatgpt</span> to summon VincentAI!
+              </div>
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
@@ -555,12 +621,35 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
 
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
+
+    const text = form.trim();
+    let aiModel = null; let aiPrompt = null; let triggerUsed = null;
+
+    for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
+      if (text.toLowerCase().startsWith(trigger + ' ')) {
+        aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break;
+      }
+    }
+
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
         await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         setForm(''); setFile(null); 
         if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+
+        if (aiModel && aiPrompt) {
+          const msgId = window.crypto.randomUUID();
+          const token = await generateToken(msgId);
+          const response = await fetch(`${BACKEND_URL}/chat`, {
+            method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "User: " + aiPrompt, model: aiModel })
+          });
+          if (!response.ok) throw new Error("AI failed to respond.");
+          
+          await msgsRef.add({ text: await response.text(), createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
+          await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+        }
       } catch (err) {
         if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
       }
@@ -632,6 +721,9 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
+              <div className="ai-tooltip">
+                ✨ <strong>AI Mode:</strong> Type <span>@deepseek</span>, <span>@copilot</span>, or <span>@chatgpt</span> to summon VincentAI!
+              </div>
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
