@@ -1,22 +1,22 @@
 {
   "files": {
     "main.css": "/talk/static/css/main.5ecb3211.chunk.css",
-    "main.js": "/talk/static/js/main.283f3d63.chunk.js",
-    "main.js.map": "/talk/static/js/main.283f3d63.chunk.js.map",
+    "main.js": "/talk/static/js/main.2999d57e.chunk.js",
+    "main.js.map": "/talk/static/js/main.2999d57e.chunk.js.map",
     "runtime-main.js": "/talk/static/js/runtime-main.4f6fcc7b.js",
     "runtime-main.js.map": "/talk/static/js/runtime-main.4f6fcc7b.js.map",
-    "static/js/2.db413821.chunk.js": "/talk/static/js/2.db413821.chunk.js",
-    "static/js/2.db413821.chunk.js.map": "/talk/static/js/2.db413821.chunk.js.map",
+    "static/js/2.daef4ded.chunk.js": "/talk/static/js/2.daef4ded.chunk.js",
+    "static/js/2.daef4ded.chunk.js.map": "/talk/static/js/2.daef4ded.chunk.js.map",
     "index.html": "/talk/index.html",
-    "precache-manifest.0d26541dee16e083bf67324ddcabf118.js": "/talk/precache-manifest.0d26541dee16e083bf67324ddcabf118.js",
+    "precache-manifest.21c255aef7bcaa5222810d2b979f8608.js": "/talk/precache-manifest.21c255aef7bcaa5222810d2b979f8608.js",
     "service-worker.js": "/talk/service-worker.js",
     "static/css/main.5ecb3211.chunk.css.map": "/talk/static/css/main.5ecb3211.chunk.css.map",
-    "static/js/2.db413821.chunk.js.LICENSE.txt": "/talk/static/js/2.db413821.chunk.js.LICENSE.txt"
+    "static/js/2.daef4ded.chunk.js.LICENSE.txt": "/talk/static/js/2.daef4ded.chunk.js.LICENSE.txt"
   },
   "entrypoints": [
     "static/js/runtime-main.4f6fcc7b.js",
-    "static/js/2.db413821.chunk.js",
+    "static/js/2.daef4ded.chunk.js",
     "static/css/main.5ecb3211.chunk.css",
-    "static/js/main.283f3d63.chunk.js"
+    "static/js/main.2999d57e.chunk.js"
   ]
 }
