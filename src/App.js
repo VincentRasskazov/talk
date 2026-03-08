@@ -787,6 +787,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
           {tab === 'app' && (
             <>
               <h2 style={{color: '#fff', marginTop: 0}}>App Settings</h2>
+              
               <div className="settings-card">
                 <h3 style={{color:'#fff', margin:0}}>Theme Color</h3>
                 <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize the main accent color of the app.</p>
@@ -794,6 +795,42 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                   {['#5865F2','#da373c','#23a559','#f0b232','#eb459e','#9b59b6', '#8b9ced'].map(c=><div key={c} onClick={()=>setTheme(c)} style={{width:36,height:36,borderRadius:'50%',background:c, cursor:'pointer', border: theme===c?'3px solid #fff':'none', transition: '0.2s', transform: theme===c?'scale(1.1)':'scale(1)'}}/>)}
                 </div>
               </div>
+
+              <div className="settings-card">
+                <h3 style={{color:'#fff', margin:0}}>Appearance Tweaks</h3>
+                <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize how the app feels on your device.</p>
+                
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
+                  <strong style={{color:'#dbdee1', fontSize:14}}>Compact Message Mode</strong>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('compactMode') === 'true'} onChange={(e) => {
+                    localStorage.setItem('compactMode', e.target.checked);
+                    if(e.target.checked) document.body.classList.add('compact-mode');
+                    else document.body.classList.remove('compact-mode');
+                  }} />
+                </div>
+
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
+                  <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Terminal UI)</strong>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
+                    localStorage.setItem('monoFont', e.target.checked);
+                    if(e.target.checked) document.body.classList.add('hacker-mode');
+                    else document.body.classList.remove('hacker-mode');
+                  }} />
+                </div>
+
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
+                  <div style={{display: 'flex', flexDirection: 'column'}}>
+                    <strong style={{color:'#dbdee1', fontSize:14}}>Reverse Layout</strong>
+                    <span style={{color: '#80848e', fontSize: 11}}>Moves sidebars to the right</span>
+                  </div>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('reverseLayout') === 'true'} onChange={(e) => {
+                    localStorage.setItem('reverseLayout', e.target.checked);
+                    window.location.reload(); // Instantly reloads to apply layout shift
+                  }} />
+                </div>
+              </div>
+            </>
+          )}
 
               <div className="settings-card">
                 <h3 style={{color:'#fff', margin:0}}>Appearance Tweaks</h3>
