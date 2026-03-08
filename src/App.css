@@ -255,5 +255,39 @@ form input[type="text"]::placeholder { color: #80848e; }
 .compact-mode .message-avatar { width: 32px; height: 32px; min-width: 32px; top: 2px; }
 .compact-mode .msg-author-row { margin-bottom: 0px; }
 
+/* --- ENHANCED CUSTOMIZATION --- */
+
+/* 1. True Hacker Mode */
+.hacker-mode, .hacker-mode * { 
+  font-family: 'Courier New', Courier, monospace !important; 
+  letter-spacing: -0.5px;
+}
+.hacker-mode .message-content p { color: #23a559 !important; } /* Green text */
+
+/* 2. Reverse Layout Changer */
+.layout-reverse { flex-direction: row-reverse !important; }
+.layout-reverse .sidebar { border-left: 1px solid #1e1f22; border-right: none; }
+.layout-reverse .channels { border-top-left-radius: 0; border-top-right-radius: 12px; box-shadow: -2px 0 10px rgba(0,0,0,0.1); }
+.layout-reverse .member-list { border-left: none; border-right: 1px solid #1e1f22; }
+
+/* 3. Deep Theme Color Integration */
+.channel.active { 
+  background-color: rgba(255,255,255,0.05); 
+  color: var(--accent-color, #5865F2); 
+  border-left: 4px solid var(--accent-color, #5865F2); 
+  border-radius: 0 4px 4px 0; 
+}
+.reaction-pill.reacted { 
+  border-color: var(--accent-color, #5865F2) !important; 
+  color: var(--accent-color, #5865F2) !important; 
+}
+.upload-btn:hover { 
+  background-color: var(--accent-color, #5865F2) !important; 
+  color: white !important; 
+}
+.auth-input:focus, .modal-box input:focus, .modal-box textarea:focus { 
+  border-color: var(--accent-color, #5865F2) !important; 
+}
+
 /* Custom Checkbox styling for Settings */
 .settings-checkbox { width: 18px !important; height: 18px !important; cursor: pointer; accent-color: var(--accent-color, #5865F2); }
