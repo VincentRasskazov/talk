@@ -432,6 +432,24 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [lastMsgId, setLastMsgId] = useState(null);
+
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      const latest = messages[messages.length - 1];
+      if (lastMsgId && latest.id !== lastMsgId && auth.currentUser && latest.uid !== auth.currentUser.uid) {
+        const now = new Date();
+        const msgDate = (latest.createdAt && latest.createdAt.toDate) ? latest.createdAt.toDate() : new Date();
+        // Check if message is actually new (less than 5 seconds old) to avoid spamming on load
+        if ((now - msgDate) < 5000) {
+          if (window.Notification && Notification.permission === 'granted' && localStorage.getItem('mute_' + server.id) !== 'true') {
+             new Notification(latest.displayName + ' in #' + (channel ? channel.name : 'server'), { body: latest.text, icon: latest.photoURL || DEFAULT_AVATAR });
+          }
+        }
+      }
+      setLastMsgId(latest.id);
+    }
+  }, [messages]);
 
   useEffect(() => { 
     if (channels && channels.length > 0 && !channel) {
@@ -671,6 +689,23 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [lastMsgId, setLastMsgId] = useState(null);
+
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      const latest = messages[messages.length - 1];
+      if (lastMsgId && latest.id !== lastMsgId && auth.currentUser && latest.uid !== auth.currentUser.uid) {
+        const now = new Date();
+        const msgDate = (latest.createdAt && latest.createdAt.toDate) ? latest.createdAt.toDate() : new Date();
+        if ((now - msgDate) < 5000) {
+          if (window.Notification && Notification.permission === 'granted') {
+             new Notification('DM from ' + latest.displayName, { body: latest.text, icon: latest.photoURL || DEFAULT_AVATAR });
+          }
+        }
+      }
+      setLastMsgId(latest.id);
+    }
+  }, [messages]);
 
   const toggleSidebar = () => { 
     if (window.innerWidth <= 768) {
@@ -1055,6 +1090,25 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     window.location.reload(); 
                   }} />
                 </div>
+
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginTop: 8}}>
+                  <div style={{display: 'flex', flexDirection: 'column'}}>
+                    <strong style={{color:'#dbdee1', fontSize:14}}>Push Notifications</strong>
+                    <span style={{color: '#80848e', fontSize: 11}}>Alerts for new messages</span>
+                  </div>
+                  <button className="settings-btn" style={{background: '#5865F2', color: '#fff', fontSize: '12px', padding: '6px 12px'}} onClick={() => {
+                    if (!("Notification" in window)) alert("Browser does not support notifications");
+                    else if (Notification.permission === "granted") {
+                      alert("Notifications are already enabled!");
+                      new Notification("Test Alert", { body: "Notifications are working!" });
+                    }
+                    else if (Notification.permission !== "denied") {
+                      Notification.requestPermission().then((p) => {
+                        if (p === "granted") new Notification("Success", { body: "Notifications are now active!" });
+                      });
+                    } else alert("You have blocked notifications in your browser settings.");
+                  }}>Enable</button>
+                </div>
               </div>
             </>
           )}
@@ -1147,6 +1201,7 @@ function ServerSettingsModal({ server, close, theme }) {
   const [icon, setIcon] = useState(server.icon || '');
   const [bannerURL, setBannerURL] = useState(server.bannerURL || '');
   const [isPrivate, setPrivate] = useState(server.isPrivate || false);
+  const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
 
   const save = async () => { 
     if (auth.currentUser) {
@@ -1192,6 +1247,10 @@ function ServerSettingsModal({ server, close, theme }) {
           <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
         </div>
         {isPrivate && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+          <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+          <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
+          <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
+        </div>
         
         <div style={{display: 'flex', gap: '12px', marginTop: '24px'}}>
           <button onClick={close} style={{flex: 1, background: '#4e5058', color: 'white', padding: '14px'}}>Cancel</button>
