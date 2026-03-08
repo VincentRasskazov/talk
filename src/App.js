@@ -318,6 +318,15 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
   const [allDMs, dmsLoading, dmsError] = useCollectionData(dmsQuery, { idField: 'id' });
+  const callsQuery = !isGuest && auth.currentUser ? firestore.collection('calls').where('targetUid', '==', auth.currentUser.uid) : null;
+  const [userCalls] = useCollectionData(callsQuery, { idField: 'id' });
+  const incomingCall = userCalls ? userCalls.find(c => c.status === 'ringing') : null;
+
+  useEffect(() => {
+    if (incomingCall && window.Notification && Notification.permission === 'granted') {
+      new Notification("Incoming Video Call 📞", { body: incomingCall.callerName + " is calling you on Talk!" });
+    }
+  }, [incomingCall]);
 
   const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
 
@@ -373,7 +382,16 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
         {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} />}
         <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} />
-        
+        {incomingCall && (!activeDM || activeDM.id !== incomingCall.id || view !== 'dms') && (
+          <div className="incoming-call-banner" style={{position:'absolute', top: 20, right: 20, left: window.innerWidth < 768 ? 20 : 'auto', zIndex: 9999, width: window.innerWidth < 768 ? 'auto' : 300, background: '#23a559'}}>
+            <span>📞 Call from {incomingCall.callerName}...</span>
+            <button onClick={() => {
+              const otherUid = incomingCall.id.split('_').find(id => auth.currentUser && id !== auth.currentUser.uid);
+              const otherUser = allUsers ? allUsers.find(u => u.uid === otherUid) : null;
+              if(otherUser) { setView('dms'); setActiveDM({id: incomingCall.id, target: otherUser}); }
+            }} style={{marginLeft: 16, background: '#fff', color: '#23a559', padding: '6px 12px', borderRadius: 16, border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Go to DM</button>
+          </div>
+        )}
         {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
 
         <div className="sidebar" style={{paddingTop: 12}}>
@@ -865,8 +883,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               </div>
             )}
 
-            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} />}
-            <main>
+            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
               {messages && messages.map(m => {
                  const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
                  return (
@@ -1306,11 +1323,26 @@ function ServerSettingsModal({ server, close, theme }) {
 // --- WEBRTC VIDEO ENGINE ---
 const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
 
-function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName }) {
+function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName, targetUid }) {
   const localRef = useRef();
   const remoteRef = useRef();
   const pc = useRef(new RTCPeerConnection(rtcConfig));
   const [status, setStatus] = useState("Connecting to camera...");
+  const [micOn, setMicOn] = useState(true);
+  const [videoOn, setVideoOn] = useState(true);
+
+  const toggleMic = () => {
+    if (localRef.current && localRef.current.srcObject) {
+      localRef.current.srcObject.getAudioTracks().forEach(t => t.enabled = !micOn);
+      setMicOn(!micOn);
+    }
+  };
+  const toggleVideo = () => {
+    if (localRef.current && localRef.current.srcObject) {
+      localRef.current.srcObject.getVideoTracks().forEach(t => t.enabled = !videoOn);
+      setVideoOn(!videoOn);
+    }
+  };
 
   useEffect(() => {
     const setupCall = async () => {
@@ -1345,7 +1377,7 @@ function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName }) {
 
           const offerDescription = await pc.current.createOffer();
           await pc.current.setLocalDescription(offerDescription);
-          await callDoc.set({ offer: { type: offerDescription.type, sdp: offerDescription.sdp }, callerName: myName, status: 'ringing' });
+          await callDoc.set({ offer: { type: offerDescription.type, sdp: offerDescription.sdp }, callerName: myName, status: 'ringing', targetUid: targetUid });
 
           callDoc.onSnapshot(snapshot => {
             const data = snapshot.data();
@@ -1407,6 +1439,8 @@ function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName }) {
         <video ref={localRef} className="local-video" autoPlay playsInline muted />
       </div>
       <div className="call-controls">
+        <button className="call-btn" style={{background: '#35373c'}} onClick={toggleMic}>{micOn ? '🎤' : '🔇'}</button>
+        <button className="call-btn" style={{background: '#35373c'}} onClick={toggleVideo}>{videoOn ? '📷' : '🚫'}</button>
         <button className="call-btn hangup" onClick={endCall}>✕</button>
       </div>
     </div>
