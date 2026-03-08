@@ -591,10 +591,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
             </header>
             <main>
-              {messages && messages.map(m => {
-                const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
-                return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} />
-              })}
+              {messages && messages.map(m => (
+                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} />
+              ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -786,10 +785,9 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               </div>
             </header>
             <main>
-              {messages && messages.map(m => {
-                 const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
-                 return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(authorData || m)} setZoomImage={setZoomImage} />
-              })}
+              {messages && messages.map(m => (
+                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
+              ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
