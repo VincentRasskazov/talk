@@ -630,21 +630,31 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
       </div>
 
       <div className="chat-container">
-        {channel ? (
+        {activeDM ? (
           <>
             <header>
               <div className="header-left">
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
-                <div className="header-title">
-                  <span className="hash-icon" style={{color: '#80848e', marginRight: 6}}>#</span> {channel.name} 
-                  {server.description && <span style={{marginLeft: 12, paddingLeft: 12, borderLeft: '1px solid #3f4147', fontSize: 13, color: '#949ba4', fontWeight: '500'}}>{server.description}</span>}
+                <div className="header-title">@{activeDM.target.displayName}</div>
+              </div>
+              <button className="settings-btn" onClick={() => { setInCall(true); setIsCaller(true); }} style={{background: '#23a559', color: 'white', borderRadius: '50%', width: 32, height: 32, padding: 0, fontSize: 14}} title="Start Video Call">📞</button>
+            </header>
+
+            {callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '') && (
+              <div className="incoming-call-banner">
+                <span>📞 Incoming video call from {activeDM.target.displayName}...</span>
+                <div style={{display: 'flex', gap: '8px'}}>
+                  <button onClick={() => { setInCall(true); setIsCaller(false); }} style={{background: '#fff', color: '#23a559', padding: '6px 16px', borderRadius: 16}}>Answer</button>
+                  <button onClick={() => callRef.set({status: 'ended'})} style={{background: '#da373c', color: '#fff', padding: '6px 16px', borderRadius: 16, border: 'none'}}>Decline</button>
                 </div>
               </div>
-              <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
-            </header>
+            )}
+
+            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
+
             <main>
               {messages && messages.map(m => (
-                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />
+                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
               ))}
               <span ref={dummy}></span>
             </main>
@@ -685,15 +695,14 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               )}
 
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-              {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
                   <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
                   <input type="file" style={{display:'none'}} onChange={handleFile} />
                 </div>
-                <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
+                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
-              </form>}
+              </form>
             </div>
           </>
         ) : <EmptyChannelState />}
