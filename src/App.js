@@ -30,9 +30,15 @@ const AI_MODELS = {
   '@deepseek': 'deepai-deepseek',
   '@llama': 'deepai-llama',
   '@qwen': 'deepai-qwen',
-  '@copilot': 'copilot',
   '@chatgpt': 'g4f',
-  '@gpt5': 'useai'
+  '@gpt5': 'useai',
+  '@copilot': 'copilot',
+  '@venice': 'venice',
+  '@overchat': 'overchat',
+  '@talkai': 'talkai',
+  '@notegpt': 'notegpt',
+  '@chatplus': 'chatplus',
+  '@horde': 'horde'
 };
 
 async function generateToken(msgId) {
@@ -475,7 +481,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           const response = await fetch(`${BACKEND_URL}/chat`, {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: msgId, token: token, message: "User: " + aiPrompt, model: aiModel })
+            body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel })
           });
 
           if (!response.ok) throw new Error("AI failed to respond.");
@@ -573,8 +579,18 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
-              <div className="ai-tooltip">
-                ✨ <strong>AI Mode:</strong> Type <span>@deepseek</span>, <span>@copilot</span>, or <span>@chatgpt</span> to summon VincentAI!
+              <div className="ai-tooltip" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                <div style={{ color: '#dbdee1' }}>✨ <strong>Summon VincentAI:</strong> Type an AI tag, followed by your prompt.</div>
+                <div style={{ fontSize: '11px', color: '#80848e' }}>Example: <span style={{ color: '#dbdee1' }}>@deepseek Write a poem about coding</span></div>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
+                  <strong style={{ color: '#f0b232', fontSize: '11px' }}>⭐ RECOMMENDED:</strong>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
+                  
+                  <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
+                  <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
+                </div>
               </div>
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
@@ -642,7 +658,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
           const msgId = window.crypto.randomUUID();
           const token = await generateToken(msgId);
           const response = await fetch(`${BACKEND_URL}/chat`, {
-            method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "User: " + aiPrompt, model: aiModel })
+            method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel })
           });
           if (!response.ok) throw new Error("AI failed to respond.");
           
@@ -721,8 +737,18 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
-              <div className="ai-tooltip">
-                ✨ <strong>AI Mode:</strong> Type <span>@deepseek</span>, <span>@copilot</span>, or <span>@chatgpt</span> to summon VincentAI!
+              <div className="ai-tooltip" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                <div style={{ color: '#dbdee1' }}>✨ <strong>Summon VincentAI:</strong> Type an AI tag, followed by your prompt.</div>
+                <div style={{ fontSize: '11px', color: '#80848e' }}>Example: <span style={{ color: '#dbdee1' }}>@deepseek Write a poem about coding</span></div>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
+                  <strong style={{ color: '#f0b232', fontSize: '11px' }}>⭐ RECOMMENDED:</strong>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
+                  <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
+                  
+                  <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
+                  <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
+                </div>
               </div>
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               <form onSubmit={sendMsg}>
