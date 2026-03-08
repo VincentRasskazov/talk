@@ -57,7 +57,6 @@ async function generateToken(msgId) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// --- ERROR HANDLING HELPER ---
 const checkQuotaError = (err) => {
   if (!err) return false;
   if (err.code === 'resource-exhausted') return true;
@@ -103,12 +102,9 @@ function useTheme() {
   return [themeColor, setThemeColor];
 }
 
-// --- LOAD SAVED SETTINGS ---
 if (localStorage.getItem('compactMode') === 'true') document.body.classList.add('compact-mode');
 if (localStorage.getItem('monoFont') === 'true') document.body.classList.add('hacker-mode');
 
-
-// --- LIVE QUOTA COUNTDOWN ---
 function QuotaBanner() {
   const [timeLeft, setTimeLeft] = useState('');
   const [localTime, setLocalTime] = useState('');
@@ -168,7 +164,6 @@ export default function App() {
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
   const [userDoc, userLoading, userError] = useDocumentData(userRef);
 
-  // --- CONSOLE WIRETAP ---
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
@@ -311,7 +306,6 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 
   const isAdmin = !isGuest && auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
   
-  // Checking for Errors directly from the hooks
   const [allServers, serversLoading, serversError] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
   const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
   
@@ -329,7 +323,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
         const storedHtml = localStorage.getItem('app_version_html');
         if (storedHtml && storedHtml !== html) {
            localStorage.setItem('app_version_html', html);
-           window.location.reload(true); // Hard refresh!
+           window.location.reload(true);
         } else {
            localStorage.setItem('app_version_html', html);
         }
@@ -396,6 +390,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
         {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} />}
         <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} />
+        
         {incomingCall && (!activeDM || activeDM.id !== incomingCall.id || view !== 'dms') && (
           <div className="incoming-call-banner" style={{position:'absolute', top: 20, right: 20, left: window.innerWidth < 768 ? 20 : 'auto', zIndex: 9999, width: window.innerWidth < 768 ? 'auto' : 300, background: '#23a559'}}>
             <span>📞 Call from {incomingCall.callerName}...</span>
@@ -406,6 +401,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
             }} style={{marginLeft: 16, background: '#fff', color: '#23a559', padding: '6px 12px', borderRadius: 16, border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Go to DM</button>
           </div>
         )}
+        
         {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
 
         <div className="sidebar" style={{paddingTop: 12}}>
@@ -420,7 +416,6 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
                 <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
                   {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
-                  </div>}
                 </div>
               </div>
             )
@@ -469,7 +464,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   );
 }
 
-function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {  const dummy = useRef();
+function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {
+  const dummy = useRef();
   const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null);
@@ -651,10 +647,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
             </header>
             <main>
-              {messages && messages.map((m) => {
-                const authorData = allUsers ? allUsers.find((u) => u.uid === m.uid) : null;
-                return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={() => openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />;
-              })}
+              {messages && messages.map((m) => (
+                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />
+              ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -742,6 +737,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
       }
     }
   }, [callData]);
+  
   const [lastMsgId, setLastMsgId] = useState(null);
 
   useEffect(() => {
@@ -895,10 +891,9 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
 
             <main>
-              {messages && messages.map((m) => {
-                 const authorData = allUsers ? allUsers.find((u) => u.uid === m.uid) : null;
-                 return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={() => openProfile(authorData || m)} setZoomImage={setZoomImage} />;
-              })}
+              {messages && messages.map((m) => (
+                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
+              ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -1316,7 +1311,8 @@ function ServerSettingsModal({ server, close, theme }) {
           </div>
         )}
         {isPrivate && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
-          <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+        
+        <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
           <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
           <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
         </div>
