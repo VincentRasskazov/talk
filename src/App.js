@@ -20,12 +20,14 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
+
 // --- ENABLE OFFLINE CACHING (SAVES 90% QUOTA) ---
 firestore.enablePersistence({ synchronizeTabs: true })
   .catch((err) => {
     if (err.code === 'failed-precondition') console.warn('Multiple tabs open, persistence enabled in first tab.');
     else if (err.code === 'unimplemented') console.warn('Browser lacks offline support.');
   });
+
 const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI5Y2VkIiBzdHJva2Utd2lkdGg9IjEyIi8+PHRleHQgeD0iNTMiIHk9Ijg1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiM4YjljZWQiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnQ8L3RleHQ+PC9zdmc+";
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
@@ -114,11 +116,8 @@ function QuotaBanner() {
   useEffect(() => {
     const updateTimer = () => {
       const now = new Date();
-      // Calculate Pacific Time
       const ptDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
-      // Get Next Midnight PT
       const nextMidnightPT = new Date(ptDate.getFullYear(), ptDate.getMonth(), ptDate.getDate() + 1);
-      // Get MS difference
       const msUntilMidnight = nextMidnightPT.getTime() - ptDate.getTime();
       
       if (!localTime) {
@@ -416,7 +415,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
           {!isGuest && <div className="server-icon-wrapper" onClick={async () => { 
             const n = prompt("Server Name:"); 
             if(n) {
-              const isPriv = !isAdmin; // Normal users force private, admins default to public
+              const isPriv = !isAdmin;
               const ownerId = auth.currentUser.uid;
               try { 
                 await firestore.collection('servers').add({ 
@@ -475,7 +474,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
       if (lastMsgId && latest.id !== lastMsgId && auth.currentUser && latest.uid !== auth.currentUser.uid) {
         const now = new Date();
         const msgDate = (latest.createdAt && latest.createdAt.toDate) ? latest.createdAt.toDate() : new Date();
-        // Check if message is actually new (less than 5 seconds old) to avoid spamming on load
         if ((now - msgDate) < 5000) {
           if (window.Notification && Notification.permission === 'granted' && localStorage.getItem('mute_' + server.id) !== 'true') {
              new Notification(latest.displayName + ' in #' + (channel ? channel.name : 'server'), { body: latest.text, icon: latest.photoURL || DEFAULT_AVATAR });
@@ -510,7 +508,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     let aiPrompt = null;
     let triggerUsed = null;
 
-    // Check if the user is summoning the AI
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
       if (text.toLowerCase().startsWith(trigger + ' ')) {
         aiModel = modelId;
@@ -522,16 +519,13 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
     if (msgsRef && auth.currentUser) {
       try {
-        // 1. Send the user's message normally
         await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
         setForm(''); setFile(null); 
         if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
 
-        // 2. If an AI was summoned, fetch the response and post it as the bot!
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID();
           const token = await generateToken(msgId);
-
           const response = await fetch(`${BACKEND_URL}/chat`, {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
@@ -550,10 +544,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           });
           if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
         }
-
       } catch (err) {
-        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
-        else console.error(err);
+        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded.");
       }
     }
   };
@@ -576,10 +568,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const members = allUsers ? allUsers.filter(u => {
     if (u.banned) return false;
     if (server.isPrivate) return server.members && server.members.includes(u.uid);
-    return true; // If it's a public server, show everyone
+    return true; 
   }) : [];
 
-  // --- AUTO-COMPLETE LOGIC ---
   const handleTextChange = (e) => {
     const val = e.target.value; setForm(val);
     const lastWord = val.split(' ').pop();
@@ -630,32 +621,23 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
       </div>
 
       <div className="chat-container">
-        {activeDM ? (
+        {channel ? (
           <>
             <header>
               <div className="header-left">
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
-                <div className="header-title">@{activeDM.target.displayName}</div>
-              </div>
-              <button className="settings-btn" onClick={() => { setInCall(true); setIsCaller(true); }} style={{background: '#23a559', color: 'white', borderRadius: '50%', width: 32, height: 32, padding: 0, fontSize: 14}} title="Start Video Call">📞</button>
-            </header>
-
-            {callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '') && (
-              <div className="incoming-call-banner">
-                <span>📞 Incoming video call from {activeDM.target.displayName}...</span>
-                <div style={{display: 'flex', gap: '8px'}}>
-                  <button onClick={() => { setInCall(true); setIsCaller(false); }} style={{background: '#fff', color: '#23a559', padding: '6px 16px', borderRadius: 16}}>Answer</button>
-                  <button onClick={() => callRef.set({status: 'ended'})} style={{background: '#da373c', color: '#fff', padding: '6px 16px', borderRadius: 16, border: 'none'}}>Decline</button>
+                <div className="header-title">
+                  <span className="hash-icon" style={{color: '#80848e', marginRight: 6}}>#</span> {channel.name} 
+                  {server.description && <span style={{marginLeft: 12, paddingLeft: 12, borderLeft: '1px solid #3f4147', fontSize: 13, color: '#949ba4', fontWeight: '500'}}>{server.description}</span>}
                 </div>
               </div>
-            )}
-
-            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
-
+              <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
+            </header>
             <main>
-              {messages && messages.map(m => (
-                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
-              ))}
+              {messages && messages.map((m) => {
+                const authorData = allUsers ? allUsers.find((u) => u.uid === m.uid) : null;
+                return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={() => openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />;
+              })}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -695,14 +677,15 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               )}
 
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+              {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
                   <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
                   <input type="file" style={{display:'none'}} onChange={handleFile} />
                 </div>
-                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
+                <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
-              </form>
+              </form>}
             </div>
           </>
         ) : <EmptyChannelState />}
@@ -733,7 +716,6 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [inCall, setInCall] = useState(false);
   const [isCaller, setIsCaller] = useState(false);
 
-  // --- INCOMING CALL NOTIFICATION ---
   useEffect(() => {
     if (callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '')) {
       if (window.Notification && Notification.permission === 'granted') {
@@ -799,7 +781,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
           if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
         }
       } catch (err) {
-        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
+        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded.");
       }
     }
   };
@@ -827,7 +809,6 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     });
   }
 
-  // --- AUTO-COMPLETE LOGIC ---
   const handleTextChange = (e) => {
     const val = e.target.value; setForm(val);
     const lastWord = val.split(' ').pop();
@@ -893,11 +874,11 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             )}
 
             {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
-              {messages && messages.map(m => {
-                 const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
-                 return (
-                   <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={()=>openProfile(authorData || m)} setZoomImage={setZoomImage} />
-                 );
+
+            <main>
+              {messages && messages.map((m) => {
+                 const authorData = allUsers ? allUsers.find((u) => u.uid === m.uid) : null;
+                 return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={() => openProfile(authorData || m)} setZoomImage={setZoomImage} />;
               })}
               <span ref={dummy}></span>
             </main>
@@ -1328,7 +1309,6 @@ function ServerSettingsModal({ server, close, theme }) {
   )
 }
 
-
 // --- WEBRTC VIDEO ENGINE ---
 const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
 
@@ -1378,7 +1358,6 @@ function VideoCallRoom({ dmId, isCaller, closeCall, myName, otherName, targetUid
 
         if (isCaller) {
           setStatus("Ringing " + otherName + "...");
-          // Clean up old call data first
           const oldOffers = await offerCandidates.get();
           oldOffers.forEach(doc => doc.ref.delete());
           const oldAnswers = await answerCandidates.get();
