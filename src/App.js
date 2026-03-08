@@ -540,7 +540,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     const words = form.split(' '); words.pop();
     setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
     setMentionQuery(null);
-    document.getElementById('server-chat-input')?.focus();
+    const input = document.getElementById('server-chat-input');
+    if (input) input.focus();
   };
 
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
@@ -751,7 +752,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     const words = form.split(' '); words.pop();
     setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
     setMentionQuery(null);
-    document.getElementById('dm-chat-input')?.focus();
+    const input = document.getElementById('dm-chat-input');
+    if (input) input.focus();
   };
 
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
