@@ -131,11 +131,11 @@ export default function App() {
   const [themeColor, setThemeColor] = useTheme();
   const [showAuth, setShowAuth] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
-  const [consoleQuotaError, setConsoleQuotaError] = useState(false); // Add this line
+  const [consoleQuotaError, setConsoleQuotaError] = useState(false); // <-- ADD THIS LINE
 
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
   const [userDoc, userLoading, userError] = useDocumentData(userRef);
-  // --- CONSOLE WIRETAP ---
+// --- CONSOLE WIRETAP ---
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
@@ -145,7 +145,7 @@ export default function App() {
       }
       originalConsoleError.apply(console, args);
     };
-    return () => { console.error = originalConsoleError; }; // Cleanup
+    return () => { console.error = originalConsoleError; };
   }, []);
 
   useEffect(() => {
@@ -160,7 +160,7 @@ export default function App() {
 
   return (
     <div className="app-wrapper" style={{'--accent-color': themeColor}}>
-      {checkQuotaError(userError) && <QuotaBanner />}
+      {(checkQuotaError(userError) || consoleQuotaError) && <QuotaBanner />}
       
       {zoomImage && (
         <div className="overlay" onClick={() => setZoomImage(null)} style={{zIndex: 2000, cursor: 'zoom-out'}}>
