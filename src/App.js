@@ -836,7 +836,6 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   const [photo, setPhoto] = useState((userDoc && userDoc.photoURL) || DEFAULT_AVATAR);
   const [bannerURL, setBannerURL] = useState((userDoc && userDoc.bannerURL) || '');
 
-  const save = async () => {
 
   const save = async () => { 
     if (auth.currentUser) {
