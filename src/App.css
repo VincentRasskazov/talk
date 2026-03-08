@@ -234,3 +234,19 @@ form input[type="text"]::placeholder { color: #80848e; }
   margin-bottom: -4px; 
   margin-top: 12px; 
 }
+/* --- QUOTA ERROR BANNER --- */
+.quota-error-banner { 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  background-color: #da373c; 
+  color: #fff; 
+  font-size: 13px; 
+  font-weight: 700; 
+  padding: 10px; 
+  flex-shrink: 0; 
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3); 
+  z-index: 2000; 
+  letter-spacing: 0.5px; 
+  text-align: center;
+}
