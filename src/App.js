@@ -630,34 +630,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               )}
 
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-              <form onSubmit={sendMsg}>
-                <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
-                  <input type="file" style={{display:'none'}} onChange={handleFile} />
-                </div>
-                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
-              </form>
-            </div>
-
-              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
-                <div className="mention-menu">
-                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
-                  {aiMatches.map(ai => (
-                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
-                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
-                    </div>
-                  ))}
-                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
-                  {userMatches.map(u => (
-                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
-                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
-                      <span>{u.displayName}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
@@ -665,17 +637,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                   <input type="file" style={{display:'none'}} onChange={handleFile} />
                 </div>
                 <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
-                <button type="submit" style={{display:'none'}}></button>
-              </form>}
-            </div>
-              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-              {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
-              <form onSubmit={sendMsg}>
-                <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center'}}>+</label>
-                  <input type="file" style={{display:'none'}} onChange={handleFile} />
-                </div>
-                <input type="text" value={form} onChange={e=>setForm(e.target.value)} placeholder={`Message #${channel.name}`} />
                 <button type="submit" style={{display:'none'}}></button>
               </form>}
             </div>
@@ -833,25 +794,44 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             </main>
             <div className="form-wrapper">
               <div className="ai-tooltip" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                <div style={{ color: '#dbdee1' }}>✨ <strong>Talk to VincentAi:</strong> Type an AI tag, followed by your prompt.</div>
+                <div style={{ color: '#dbdee1' }}>✨ <strong>Talk to VincentAI:</strong> Type an AI tag, followed by your prompt.</div>
                 <div style={{ fontSize: '11px', color: '#80848e' }}>Example: <span style={{ color: '#dbdee1' }}>@deepseek Write a poem about noobs</span></div>
                 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
                   <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
                   <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
                   <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
-                  
                   <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
                   <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
                 </div>
               </div>
+
+              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
+                <div className="mention-menu">
+                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
+                  {aiMatches.map(ai => (
+                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
+                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
+                    </div>
+                  ))}
+                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
+                  {userMatches.map(u => (
+                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
+                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
+                      <span>{u.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
                   <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
                   <input type="file" style={{display:'none'}} onChange={handleFile} />
                 </div>
-                <input type="text" value={form} onChange={e=>setForm(e.target.value)} placeholder={`Message @${activeDM.target.displayName}`} />
+                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
+                <button type="submit" style={{display:'none'}}></button>
               </form>
             </div>
           </>
