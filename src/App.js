@@ -426,6 +426,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const dummy = useRef();
   const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState(null);
 
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
@@ -527,6 +528,24 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     return false;
   }) : [];
 
+  // --- AUTO-COMPLETE LOGIC ---
+  const handleTextChange = (e) => {
+    const val = e.target.value; setForm(val);
+    const lastWord = val.split(' ').pop();
+    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase());
+    else setMentionQuery(null);
+  };
+
+  const insertMention = (tag) => {
+    const words = form.split(' '); words.pop();
+    setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
+    setMentionQuery(null);
+    document.getElementById('server-chat-input')?.focus();
+  };
+
+  const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
+  const userMatches = mentionQuery !== null && allUsers ? allUsers.filter(u => !u.banned && u.displayName.toLowerCase().includes(mentionQuery)) : [];
+
   return (
     <>
       <div className={`channels ${mobileNavOpen ? 'open' : ''} ${!channelsOpenPC ? 'closed' : ''}`}>
@@ -587,11 +606,68 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                   <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
                   <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@deepseek</span>
                   <span style={{ border: '1px solid #f0b232', color: '#f0b232' }}>@copilot</span>
-                  
                   <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
                   <span>@chatgpt</span><span>@llama</span><span>@qwen</span><span>@gpt5</span><span>@venice</span>
                 </div>
               </div>
+
+              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
+                <div className="mention-menu">
+                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
+                  {aiMatches.map(ai => (
+                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
+                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
+                    </div>
+                  ))}
+                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
+                  {userMatches.map(u => (
+                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
+                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
+                      <span>{u.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+              <form onSubmit={sendMsg}>
+                <div className="upload-btn">
+                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
+                  <input type="file" style={{display:'none'}} onChange={handleFile} />
+                </div>
+                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
+              </form>
+            </div>
+
+              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
+                <div className="mention-menu">
+                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
+                  {aiMatches.map(ai => (
+                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
+                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
+                    </div>
+                  ))}
+                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
+                  {userMatches.map(u => (
+                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
+                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
+                      <span>{u.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+              {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
+              <form onSubmit={sendMsg}>
+                <div className="upload-btn">
+                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+</label>
+                  <input type="file" style={{display:'none'}} onChange={handleFile} />
+                </div>
+                <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
+                <button type="submit" style={{display:'none'}}></button>
+              </form>}
+            </div>
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
               <form onSubmit={sendMsg}>
@@ -623,6 +699,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
 function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
+  const [mentionQuery, setMentionQuery] = useState(null);
   
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
@@ -694,6 +771,24 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
       return timeB - timeA;
     });
   }
+
+  // --- AUTO-COMPLETE LOGIC ---
+  const handleTextChange = (e) => {
+    const val = e.target.value; setForm(val);
+    const lastWord = val.split(' ').pop();
+    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase());
+    else setMentionQuery(null);
+  };
+
+  const insertMention = (tag) => {
+    const words = form.split(' '); words.pop();
+    setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
+    setMentionQuery(null);
+    document.getElementById('dm-chat-input')?.focus();
+  };
+
+  const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
+  const userMatches = mentionQuery !== null && allUsers ? allUsers.filter(u => !u.banned && u.displayName.toLowerCase().includes(mentionQuery)) : [];
 
   return (
     <>
