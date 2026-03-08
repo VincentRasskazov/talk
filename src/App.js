@@ -62,8 +62,52 @@ const formatTimestamp = (timestamp) => {
 
 function useTheme() {
   const [themeColor, setThemeColor] = useState(localStorage.getItem('themeColor') || '#5865F2');
-  useEffect(() => { localStorage.setItem('themeColor', themeColor); }, [themeColor]);
+  useEffect(() => { 
+    localStorage.setItem('themeColor', themeColor); 
+    document.documentElement.style.setProperty('--accent-color', themeColor);
+  }, [themeColor]);
   return [themeColor, setThemeColor];
+}
+
+// --- LOAD SAVED SETTINGS ---
+if (localStorage.getItem('compactMode') === 'true') document.body.classList.add('compact-mode');
+if (localStorage.getItem('monoFont') === 'true') document.body.style.fontFamily = 'monospace';
+
+// --- LIVE QUOTA COUNTDOWN ---
+function QuotaBanner() {
+  const [timeLeft, setTimeLeft] = useState('');
+  const [localTime, setLocalTime] = useState('');
+
+  useEffect(() => {
+    const updateTimer = () => {
+      const now = new Date();
+      // Calculate Pacific Time
+      const ptDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+      // Get Next Midnight PT
+      const nextMidnightPT = new Date(ptDate.getFullYear(), ptDate.getMonth(), ptDate.getDate() + 1);
+      // Get MS difference
+      const msUntilMidnight = nextMidnightPT.getTime() - ptDate.getTime();
+      
+      if (!localTime) {
+        const resetDateLocal = new Date(now.getTime() + msUntilMidnight);
+        setLocalTime(resetDateLocal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+
+      const hrs = Math.floor((msUntilMidnight / (1000 * 60 * 60)) % 24);
+      const mins = Math.floor((msUntilMidnight / 1000 / 60) % 60);
+      const secs = Math.floor((msUntilMidnight / 1000) % 60);
+      setTimeLeft(`${hrs}h ${mins}m ${secs}s`);
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [localTime]);
+
+  return (
+    <div className="quota-error-banner">
+      ⚠️ Firebase Daily Quota Exceeded. The server resets in {timeLeft} (at {localTime} your local time).
+    </div>
+  );
 }
 
 const EmptyServerState = () => (
@@ -116,11 +160,7 @@ export default function App() {
 
   return (
     <div className="app-wrapper" style={{'--accent-color': themeColor}}>
-      {(checkQuotaError(userError) || consoleQuotaError) && (
-        <div className="quota-error-banner">
-          ⚠️ Firebase Daily Quota Exceeded. The app is temporarily locked and will reset at Midnight Pacific Time (PT).
-        </div>
-      )}
+      {checkQuotaError(userError) && <QuotaBanner />}
       
       {zoomImage && (
         <div className="overlay" onClick={() => setZoomImage(null)} style={{zIndex: 2000, cursor: 'zoom-out'}}>
@@ -750,6 +790,28 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                 <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize the main accent color of the app.</p>
                 <div className="color-picker" style={{display:'flex', gap:12}}>
                   {['#5865F2','#da373c','#23a559','#f0b232','#eb459e','#9b59b6', '#8b9ced'].map(c=><div key={c} onClick={()=>setTheme(c)} style={{width:36,height:36,borderRadius:'50%',background:c, cursor:'pointer', border: theme===c?'3px solid #fff':'none', transition: '0.2s', transform: theme===c?'scale(1.1)':'scale(1)'}}/>)}
+                </div>
+              </div>
+
+              <div className="settings-card">
+                <h3 style={{color:'#fff', margin:0}}>Appearance Tweaks</h3>
+                <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize how the app feels on your device.</p>
+                
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
+                  <strong style={{color:'#dbdee1', fontSize:14}}>Compact Message Mode</strong>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('compactMode') === 'true'} onChange={(e) => {
+                    localStorage.setItem('compactMode', e.target.checked);
+                    if(e.target.checked) document.body.classList.add('compact-mode');
+                    else document.body.classList.remove('compact-mode');
+                  }} />
+                </div>
+
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
+                  <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Monospace Font)</strong>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
+                    localStorage.setItem('monoFont', e.target.checked);
+                    document.body.style.fontFamily = e.target.checked ? 'monospace' : '';
+                  }} />
                 </div>
               </div>
             </>
