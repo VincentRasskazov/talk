@@ -87,9 +87,22 @@ export default function App() {
   const [themeColor, setThemeColor] = useTheme();
   const [showAuth, setShowAuth] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
+  const [consoleQuotaError, setConsoleQuotaError] = useState(false); // Add this line
 
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
   const [userDoc, userLoading, userError] = useDocumentData(userRef);
+  // --- CONSOLE WIRETAP ---
+  useEffect(() => {
+    const originalConsoleError = console.error;
+    console.error = (...args) => {
+      const errorString = args.join(' ');
+      if (errorString.includes('Quota') || errorString.includes('resource-exhausted')) {
+        setConsoleQuotaError(true);
+      }
+      originalConsoleError.apply(console, args);
+    };
+    return () => { console.error = originalConsoleError; }; // Cleanup
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -103,7 +116,7 @@ export default function App() {
 
   return (
     <div className="app-wrapper" style={{'--accent-color': themeColor}}>
-      {checkQuotaError(userError) && (
+      {(checkQuotaError(userError) || consoleQuotaError) && (
         <div className="quota-error-banner">
           ⚠️ Firebase Daily Quota Exceeded. The app is temporarily locked and will reset at Midnight Pacific Time (PT).
         </div>
