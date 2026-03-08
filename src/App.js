@@ -23,6 +23,14 @@ const firestore = firebase.firestore();
 const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI5Y2VkIiBzdHJva2Utd2lkdGg9IjEyIi8+PHRleHQgeD0iNTMiIHk9Ijg1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiM4YjljZWQiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnQ8L3RleHQ+PC9zdmc+";
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
+// --- ERROR HANDLING HELPER ---
+const checkQuotaError = (err) => {
+  if (!err) return false;
+  if (err.code === 'resource-exhausted') return true;
+  if (err.message && err.message.toLowerCase().includes('quota')) return true;
+  return false;
+};
+
 const compressImage = (file, maxWidth, maxHeight, callback) => {
   if (!file) return;
   if (file.size > 800000) return alert("File too large. Please select an image under 800KB.");
@@ -81,13 +89,13 @@ export default function App() {
   const [zoomImage, setZoomImage] = useState(null);
 
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
-  const [userDoc] = useDocumentData(userRef);
+  const [userDoc, userLoading, userError] = useDocumentData(userRef);
 
   useEffect(() => {
     if (!user) return;
     if (userDoc && userDoc.banned) return;
     if (userRef) {
-      userRef.set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true });
+      userRef.set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
     }
   }, [user]);
 
@@ -95,6 +103,12 @@ export default function App() {
 
   return (
     <div className="app-wrapper" style={{'--accent-color': themeColor}}>
+      {checkQuotaError(userError) && (
+        <div className="quota-error-banner">
+          ⚠️ Firebase Daily Quota Exceeded. The app is temporarily locked and will reset at Midnight Pacific Time (PT).
+        </div>
+      )}
+      
       {zoomImage && (
         <div className="overlay" onClick={() => setZoomImage(null)} style={{zIndex: 2000, cursor: 'zoom-out'}}>
           <img src={zoomImage} className="lightbox-img" alt="Zoomed" onClick={e => e.stopPropagation()} />
@@ -170,7 +184,7 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   return (
     <div className="overlay" onClick={close} style={{zIndex: 1005}}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{paddingTop: 0}}>
-        <button onClick={close} style={{position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)', color:'#fff', borderRadius:'50%', width:24, height:24, zIndex:10, display:'flex', justifyContent:'center', alignItems:'center', padding:0}}>✕</button>
+        <button onClick={close} style={{position:'absolute', top:10, right:10, background:'rgba(0,0,0,0.5)', color:'#fff', borderRadius:'50%', width:28, height:28, zIndex:10, display:'flex', justifyContent:'center', alignItems:'center', padding:0}}>✕</button>
         <div className="profile-banner" style={{background: userProfile.bannerURL ? 'transparent' : themeColor, backgroundImage: userProfile.bannerURL ? `url(${userProfile.bannerURL})` : 'none'}}>
           <img src={userProfile.photoURL || DEFAULT_AVATAR} className="profile-avatar" alt="pfp" />
         </div>
@@ -210,11 +224,15 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const [channelsOpenPC, setChannelsOpenPC] = useState(true);
 
   const isAdmin = !isGuest && auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
-  const [allServers] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
-  const [allUsers] = useCollectionData(firestore.collection('users'));
+  
+  // Checking for Errors directly from the hooks
+  const [allServers, serversLoading, serversError] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
+  const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
   
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
-  const [allDMs] = useCollectionData(dmsQuery, { idField: 'id' });
+  const [allDMs, dmsLoading, dmsError] = useCollectionData(dmsQuery, { idField: 'id' });
+
+  const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
 
   let servers = [];
   if (allServers) {
@@ -242,64 +260,84 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     const uid1 = auth.currentUser.uid; 
     const uid2 = targetUser.uid;
     const dmId = uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
-    const dmRef = firestore.collection('dms').doc(dmId);
-    const doc = await dmRef.get();
-    if (!doc.exists) {
-      await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    try {
+      const dmRef = firestore.collection('dms').doc(dmId);
+      const doc = await dmRef.get();
+      if (!doc.exists) {
+        await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }
+      setView('dms'); 
+      setActiveDM({ id: dmId, target: targetUser });
+    } catch(err) {
+      if(checkQuotaError(err)) alert("Daily quota exceeded. Please try again tomorrow.");
     }
-    setView('dms'); 
-    setActiveDM({ id: dmId, target: targetUser });
   };
 
   const closeAllMenus = () => setMobileNavOpen(false);
 
   return (
-    <div className="discord-layout">
-      {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
-      {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} />}
-      <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} />
-      
-      {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
-
-      <div className="sidebar">
-        <div className="server-icon-wrapper" onClick={() => { setView('dms'); setMobileNavOpen(true); setCurrentServer(null); }}>
-          <img src={DEFAULT_AVATAR} className={`server-icon ${view === 'dms' ? 'active' : ''}`} alt="DM" style={{borderRadius: view==='dms'?16:24}} />
+    <>
+      {isQuotaExceeded && (
+        <div className="quota-error-banner">
+          ⚠️ Firebase Daily Quota Exceeded. Content may fail to load. The database will reset at Midnight Pacific Time (PT).
         </div>
-        <div className="divider"></div>
-        {servers.map(s => {
-          const isActive = currentServer && currentServer.id === s.id && view === 'servers';
-          const hasImage = s.icon && s.icon.startsWith('data:');
-          return (
-            <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
-              <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
-                {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
-                {isAdmin && <div className="server-actions">
-                  <button className="action-btn edit-btn" onClick={(e) => { e.stopPropagation(); setEditingServer(s); }}>✎</button>
-                </div>}
-              </div>
-            </div>
-          )
-        })}
-        {isAdmin && <div className="server-icon-wrapper" onClick={async () => { const n = prompt("Server Name:"); if(n) await firestore.collection('servers').add({ name: n, icon: n.charAt(0).toUpperCase(), isPrivate: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); }}>
-          <div className="server-icon server-add-btn">+</div>
-        </div>}
-        {!isAdmin && !isGuest && <div className="server-icon-wrapper" onClick={async () => {
-          const c = prompt("Enter 6-digit Code:"); if(!c) return;
-          const match = allServers.find(s => s.inviteCode === c.toUpperCase());
-          if(match) { await firestore.collection('servers').doc(match.id).update({ members: firebase.firestore.FieldValue.arrayUnion(auth.currentUser.uid) }); alert("Joined!"); } else alert("Invalid code.");
-        }}>
-          <div className="server-icon server-join-btn">Join</div>
-        </div>}
-      </div>
-
-      {view === 'servers' && currentServer ? (
-        <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} />
-      ) : view === 'dms' && !isGuest ? (
-        <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
-      ) : (
-        <EmptyServerState />
       )}
-    </div>
+      <div className="discord-layout">
+        {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
+        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} />}
+        <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} />
+        
+        {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
+
+        <div className="sidebar" style={{paddingTop: 12}}>
+          <div className="server-icon-wrapper" onClick={() => { setView('dms'); setMobileNavOpen(true); setCurrentServer(null); }}>
+            <img src={DEFAULT_AVATAR} className={`server-icon ${view === 'dms' ? 'active' : ''}`} alt="DM" style={{borderRadius: view==='dms'?16:24}} />
+          </div>
+          <div className="divider"></div>
+          {servers.map(s => {
+            const isActive = currentServer && currentServer.id === s.id && view === 'servers';
+            const hasImage = s.icon && s.icon.startsWith('data:');
+            return (
+              <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
+                <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
+                  {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
+                  {isAdmin && <div className="server-actions">
+                    <button className="action-btn edit-btn" onClick={(e) => { e.stopPropagation(); setEditingServer(s); }}>✎</button>
+                  </div>}
+                </div>
+              </div>
+            )
+          })}
+          {isAdmin && <div className="server-icon-wrapper" onClick={async () => { 
+            const n = prompt("Server Name:"); 
+            if(n) {
+              try { await firestore.collection('servers').add({ name: n, icon: n.charAt(0).toUpperCase(), isPrivate: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+            }
+          }}>
+            <div className="server-icon server-add-btn">+</div>
+          </div>}
+          {!isAdmin && !isGuest && <div className="server-icon-wrapper" onClick={async () => {
+            const c = prompt("Enter 6-digit Code:"); if(!c) return;
+            const match = allServers.find(s => s.inviteCode === c.toUpperCase());
+            if(match) { 
+              try { await firestore.collection('servers').doc(match.id).update({ members: firebase.firestore.FieldValue.arrayUnion(auth.currentUser.uid) }); alert("Joined!"); }
+              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+            } else alert("Invalid code.");
+          }}>
+            <div className="server-icon server-join-btn">Join</div>
+          </div>}
+        </div>
+
+        {view === 'servers' && currentServer ? (
+          <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} />
+        ) : view === 'dms' && !isGuest ? (
+          <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
+        ) : (
+          <EmptyServerState />
+        )}
+      </div>
+    </>
   );
 }
 
@@ -332,10 +370,14 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
     if (msgsRef && auth.currentUser) {
-      await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+      try {
+        await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        setForm(''); setFile(null); 
+        if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
+      }
     }
-    setForm(''); setFile(null); 
-    if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleFile = (e) => {
@@ -353,16 +395,13 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     }; reader.readAsDataURL(f);
   };
 
-  let members = [];
-  if (allUsers) {
-    members = allUsers.filter(u => {
-      if (u.banned) return false;
-      if (isAdmin) return true;
-      if (!server.isPrivate) return true;
-      if (server.members && server.members.includes(u.uid)) return true;
-      return false;
-    });
-  }
+  const members = allUsers ? allUsers.filter(u => {
+    if (u.banned) return false;
+    if (isAdmin) return true;
+    if (!server.isPrivate) return true;
+    if (server.members && server.members.includes(u.uid)) return true;
+    return false;
+  }) : [];
 
   return (
     <>
@@ -370,7 +409,13 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         <div className="channels-header" style={server.bannerURL ? {backgroundImage: `url(${server.bannerURL})`} : {}}>
           {server.bannerURL && <div className="channels-header-overlay"></div>}
           <h3 style={{position: 'relative', zIndex: 1, textShadow: server.bannerURL ? '0 2px 4px rgba(0,0,0,0.9)' : 'none', color: server.bannerURL ? '#fff' : '#f2f3f5'}}>{server.name}</h3>
-          {isAdmin && <button className="add-btn" onClick={async()=>{const n=prompt("Channel Name:"); if(n) await channelsRef.add({name: n.toLowerCase(), createdAt: firebase.firestore.FieldValue.serverTimestamp()})}}>+</button>}
+          {isAdmin && <button className="add-btn" onClick={async()=>{
+            const n=prompt("Channel Name:"); 
+            if(n) {
+              try { await channelsRef.add({name: n.toLowerCase(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}) }
+              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+            }
+          }}>+</button>}
         </div>
         <div className="channel-list">
           {channels && channels.map(c => (
@@ -456,11 +501,15 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
     if (msgsRef && auth.currentUser) {
-      await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
-      await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      try {
+        await msgsRef.add({ text: form, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        setForm(''); setFile(null); 
+        if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded. Try again tomorrow.");
+      }
     }
-    setForm(''); setFile(null); 
-    if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleFile = (e) => {
@@ -497,7 +546,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             if(!otherUser) return null;
             return (
               <div key={dm.id} className={`channel ${activeDM && activeDM.id===dm.id ? 'active':''}`} onClick={()=>{setActiveDM({id: dm.id, target: otherUser}); closeAllMenus();}}>
-                <div style={{display:'flex', alignItems:'center', gap:8}}><img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />{otherUser.displayName}</div>
+                <div style={{display:'flex', alignItems:'center', gap:10}}><img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />{otherUser.displayName}</div>
               </div>
             )
           })}
@@ -564,7 +613,12 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
     } else {
       newR[em] = newUids;
     }
-    await msgRef.set({ reactions: newR }, { merge: true });
+    
+    try {
+      await msgRef.set({ reactions: newR }, { merge: true });
+    } catch (err) {
+      if (checkQuotaError(err)) alert("Action failed: Quota Exceeded.");
+    }
   };
   
   return (
@@ -611,10 +665,14 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
 
   const save = async () => { 
     if (auth.currentUser) {
-      await firestore.collection('users').doc(auth.currentUser.uid).set({ displayName: name, bio, statusText, pronouns, photoURL: photo, bannerURL }, {merge:true}); 
-      await auth.currentUser.updateProfile({ displayName: name, photoURL: photo }); 
+      try {
+        await firestore.collection('users').doc(auth.currentUser.uid).set({ displayName: name, bio, statusText, pronouns, photoURL: photo, bannerURL }, {merge:true}); 
+        await auth.currentUser.updateProfile({ displayName: name, photoURL: photo }); 
+        close(); 
+      } catch (err) {
+        if (checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded. Try again tomorrow.");
+      }
     }
-    close(); 
   };
 
   return (
@@ -687,6 +745,21 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
           {tab === 'admin' && isAdmin && (
             <>
               <h2 style={{color: '#f0b232', marginTop: 0}}>Admin Panel</h2>
+              
+              <div className="settings-card">
+                <h3 style={{color: '#fff', margin: 0}}>Firebase Usage & Quotas</h3>
+                <p style={{fontSize: 13, color: '#949ba4', marginTop: 4, marginBottom: 16}}>
+                  Client-side tracking is restricted by Google. Click below to view your live daily reads, writes, and active connections.
+                </p>
+                <button 
+                  className="save-btn" 
+                  onClick={() => window.open('https://console.firebase.google.com/project/chat-65f4a/usage/details', '_blank')} 
+                  style={{background: '#dbdee1', color: '#1e1f22', width: 'fit-content'}}
+                >
+                  View Live Firebase Quotas ↗
+                </button>
+              </div>
+
               <div className="settings-card">
                 <h3 style={{color: '#fff', margin: 0}}>User Management</h3>
                 <p style={{fontSize: 13, color: '#949ba4', marginTop: 4, marginBottom: 16}}>Ban or Unban users from the platform entirely.</p>
@@ -702,7 +775,10 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     </div>
                     {u.email !== 'vincentr111222@gmail.com' && (
                       <button className={u.banned ? "unban-btn" : "ban-btn"} onClick={async () => { 
-                        if(window.confirm(u.banned ? "Unban this user?" : "Ban user permanently?")) await firestore.collection('users').doc(u.uid).update({ banned: !u.banned }); 
+                        if(window.confirm(u.banned ? "Unban this user?" : "Ban user permanently?")) {
+                          try { await firestore.collection('users').doc(u.uid).update({ banned: !u.banned }); }
+                          catch(err) { if (checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+                        }
                       }}>{u.banned ? "Unban" : "Ban"}</button>
                     )}
                   </div>
@@ -717,9 +793,13 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     <strong style={{color: '#fff', fontSize: 15}}>{s.name}</strong>
                     <button className="ban-btn" onClick={async () => {
                       if(window.confirm(`Delete ${s.name} entirely?`)) {
-                        await firestore.collection('servers').doc(s.id).delete();
-                        alert(`${s.name} has been permanently deleted.`);
-                        window.location.reload(); 
+                        try {
+                          await firestore.collection('servers').doc(s.id).delete();
+                          alert(`${s.name} has been permanently deleted.`);
+                          window.location.reload(); 
+                        } catch (err) {
+                           if (checkQuotaError(err)) alert("Action failed: Quota Exceeded.");
+                        }
                       }
                     }}>Force Delete</button>
                   </div>
@@ -745,9 +825,13 @@ function ServerSettingsModal({ server, close, theme }) {
       const inviteCode = isPrivate ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
       let members = server.members || [];
       if (isPrivate && members.length === 0) members = [auth.currentUser.uid];
-      await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPrivate, inviteCode, members }); 
+      try {
+        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPrivate, inviteCode, members }); 
+        close(); 
+      } catch (err) {
+        if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
+      }
     }
-    close(); 
   };
 
   return (
