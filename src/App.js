@@ -382,17 +382,28 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
                 <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
                   {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
-                  {isAdmin && <div className="server-actions">
+                  {(isAdmin || (s.owner && auth.currentUser && s.owner === auth.currentUser.uid)) && <div className="server-actions">
                     <button className="action-btn edit-btn" onClick={(e) => { e.stopPropagation(); setEditingServer(s); }}>✎</button>
                   </div>}
                 </div>
               </div>
             )
           })}
-          {isAdmin && <div className="server-icon-wrapper" onClick={async () => { 
+          {!isGuest && <div className="server-icon-wrapper" onClick={async () => { 
             const n = prompt("Server Name:"); 
             if(n) {
-              try { await firestore.collection('servers').add({ name: n, icon: n.charAt(0).toUpperCase(), isPrivate: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+              const isPriv = !isAdmin; // Normal users force private, admins default to public
+              const ownerId = auth.currentUser.uid;
+              try { 
+                await firestore.collection('servers').add({ 
+                  name: n, 
+                  icon: n.charAt(0).toUpperCase(), 
+                  isPrivate: isPriv, 
+                  owner: ownerId,
+                  members: [ownerId],
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                }); 
+              }
               catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
             }
           }}>
@@ -540,10 +551,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
   const members = allUsers ? allUsers.filter(u => {
     if (u.banned) return false;
-    if (isAdmin) return true;
-    if (!server.isPrivate) return true;
-    if (server.members && server.members.includes(u.uid)) return true;
-    return false;
+    if (server.isPrivate) return server.members && server.members.includes(u.uid);
+    return true; // If it's a public server, show everyone
   }) : [];
 
   // --- AUTO-COMPLETE LOGIC ---
@@ -610,12 +619,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
             </header>
             <main>
-              {messages && messages.map(m => {
-                const authorData = allUsers ? allUsers.find(u => u.uid === m.uid) : null;
-                return (
-                  <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} />
-                );
-              })}
+              {messages && messages.map(m => (
+                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={()=>openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />
+              ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
@@ -890,7 +896,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage }) {
+function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner }) {
   const toggleReact = async (em) => {
     if(isGuest || !auth.currentUser) {
       if (onLoginClick) onLoginClick();
@@ -924,6 +930,7 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
       <div className="message-content">
         <div className="msg-author-row">
           <span className="msg-author" onClick={openProfile}>{msg.displayName}</span>
+          {serverOwner && msg.uid === serverOwner && <span style={{background: '#f0b232', color: '#1e1f22', fontSize: '10px', padding: '2px 4px', borderRadius: '4px', marginLeft: '6px', fontWeight: 'bold'}}>OWNER</span>}
           <span className="msg-timestamp">{formatTimestamp(msg.createdAt)}</span>
         </div>
         {msg.text && <p>{msg.text}</p>}
@@ -944,7 +951,7 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
       {!isGuest && (
         <div className="msg-hover-actions">
           {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
-          {(auth.currentUser && msg.uid === auth.currentUser.uid) || isAdmin ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
+          {(auth.currentUser && msg.uid === auth.currentUser.uid) || isAdmin || (serverOwner && auth.currentUser && serverOwner === auth.currentUser.uid) ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
         </div>
       )}
     </div>
@@ -1242,10 +1249,12 @@ function ServerSettingsModal({ server, close, theme }) {
         <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
         <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
         
-        <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-          <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Requires Invite Code to join</span></div>
-          <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
-        </div>
+        {auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com' && (
+          <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+            <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Requires Invite Code to join</span></div>
+            <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
+          </div>
+        )}
         {isPrivate && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
           <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
           <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
