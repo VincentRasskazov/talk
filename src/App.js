@@ -847,7 +847,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner }) {
+function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner, serverAdmins }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
 
