@@ -1497,20 +1497,21 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     try {
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
-                        
-                        // 1. Get the correct path for GitHub Pages
                         const swPath = window.location.pathname.includes('/talk') ? '/talk/firebase-messaging-sw.js' : '/firebase-messaging-sw.js';
                         
-                        // 2. Register it and wait for the browser to say it's 100% ready
-                        await navigator.serviceWorker.register(swPath);
-                        const registration = await navigator.serviceWorker.ready;
+                        const reg = await navigator.serviceWorker.register(swPath);
+                        await reg.update(); // Force the browser to bypass stale workers
                         
+                        const readyReg = await navigator.serviceWorker.ready;
                         const messaging = firebase.messaging();
                         
-                        // 3. THIS IS THE FIX: Tell Firebase v8 explicitly to use THIS worker
-                        messaging.useServiceWorker(registration);
+                        // Catch the singleton crash if the user clicks this button twice
+                        try {
+                          messaging.useServiceWorker(readyReg);
+                        } catch (err) {
+                          console.warn("Firebase SW bind skipped (already bound):", err.message);
+                        }
                         
-                        // 4. Now ask for the token (Do not pass the registration in here)
                         const token = await messaging.getToken({ 
                           vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0' 
                         });
