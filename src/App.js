@@ -502,8 +502,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 
 function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
-  const [mentionQuery, setMentionQuery] = useState(null);
-  const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
+  const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
+  const [collapsedCats, setCollapsedCats] = useState({});
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
