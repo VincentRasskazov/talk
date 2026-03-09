@@ -123,6 +123,7 @@ function QuotaBanner() {
 
       const hrs = Math.floor((msUntilMidnight / (1000 * 60 * 60)) % 24);
       const mins = Math.floor((msUntilMidnight / 1000 / 60) % 60);
+      const secs = Math.floor((msUntilMidnight / 1000) % 60);
       setTimeLeft(`${hrs}h ${mins}m`);
     };
     updateTimer();
@@ -138,16 +139,17 @@ function QuotaBanner() {
 }
 
 const EmptyState = ({ title, desc }) => (
-  const EmptyChannelState = () => (
+  <div className="empty-state">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+    <h2>{title}</h2><p>{desc}</p>
+  </div>
+);
+
+const EmptyChannelState = () => (
   <div className="empty-state">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
     <h2>No Channel Selected</h2>
     <p>Select a text channel from the menu to see messages and participate in the conversation.</p>
-  </div>
-);
-  <div className="empty-state">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-    <h2>{title}</h2><p>{desc}</p>
   </div>
 );
 
@@ -469,14 +471,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               const ownerId = auth.currentUser.uid;
               try { 
                 await firestore.collection('servers').add({ 
-                  name: n, 
-                  icon: n.charAt(0).toUpperCase(), 
-                  isPrivate: isPriv, 
-                  owner: ownerId, 
-                  members: [ownerId], 
-                  admins: [], 
-                  banned: [], 
-                  createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                  name: n, icon: n.charAt(0).toUpperCase(), isPrivate: isPriv, owner: ownerId, members: [ownerId], admins: [], banned: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() 
                 }); 
               } catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
             }
