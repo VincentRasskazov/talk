@@ -366,6 +366,18 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
           </div>
           {isSelf && <span style={{color: '#949ba4', fontSize: 13}}>{userProfile.email}</span>}
           {userProfile.statusText && <div style={{marginTop: 10, fontStyle: 'italic', color: '#dbdee1', fontSize: 14}}>"{userProfile.statusText}"</div>}
+          
+          {currentServer && (
+            <div style={{marginTop: 16}}>
+              <h4 style={{margin: '0 0 8px 0', color: '#b5bac1', fontSize: 12, textTransform: 'uppercase'}}>Server Roles</h4>
+              <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                {targetIsOwner && <div style={{background: '#f0b232', color: '#000', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Owner</div>}
+                {targetIsAdmin && <div style={{background: '#5865F2', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Admin</div>}
+                {!targetIsOwner && !targetIsAdmin && <div style={{background: '#4e5058', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Everyone</div>}
+              </div>
+            </div>
+          )}
+
           <div style={{background: '#1e1f22', padding: 16, borderRadius: 8, marginTop: 16, border: '1px solid rgba(255,255,255,0.05)'}}>
             <h4 style={{margin: '0 0 8px 0', color: '#b5bac1', fontSize: 12, textTransform: 'uppercase'}}>About Me</h4>
             <p style={{margin: 0, color: '#dbdee1', fontSize: 14, lineHeight: 1.5}}>{userProfile.bio || "No bio provided."}</p>
@@ -490,9 +502,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 
 function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
-  const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
-  const [rateLimitTimer, setRateLimitTimer] = useState([]);
-  const [collapsedCats, setCollapsedCats] = useState({});
+  const [mentionQuery, setMentionQuery] = useState(null);
+  const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
@@ -522,10 +533,12 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     e.preventDefault(); if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
 
-    const now = Date.now();
-    const recent = rateLimitTimer.filter(t => now - t < 5000);
-    if (recent.length >= 4) return alert("Rate limit active. Please wait 5 seconds.");
-    setRateLimitTimer([...recent, now]);
+    // Advanced Persistent Rate Limiter (survives page reloads to protect quota)
+    const recentSends = JSON.parse(localStorage.getItem('spam_filter') || '[]').filter(t => Date.now() - t < 10000);
+    if (recentSends.length >= 5) {
+      return alert("⏳ Slow down! Advanced rate limit active to protect server quota. Try again in 10 seconds.");
+    }
+    localStorage.setItem('spam_filter', JSON.stringify([...recentSends, Date.now()]));
 
     const text = form.trim();
     let aiModel = null; let triggerUsed = null; let aiPrompt = null;
@@ -710,10 +723,12 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
 
-    const now = Date.now();
-    const recent = rateLimitTimer.filter(t => now - t < 5000);
-    if (recent.length >= 4) return alert("Rate limit active. Please wait 5 seconds.");
-    setRateLimitTimer([...recent, now]);
+    // Advanced Persistent Rate Limiter
+    const recentSends = JSON.parse(localStorage.getItem('spam_filter') || '[]').filter(t => Date.now() - t < 10000);
+    if (recentSends.length >= 5) {
+      return alert("⏳ Slow down! Advanced rate limit active. Try again in 10 seconds.");
+    }
+    localStorage.setItem('spam_filter', JSON.stringify([...recentSends, Date.now()]));
 
     const text = form.trim(); let aiModel = null; let triggerUsed = null; let aiPrompt = null;
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
