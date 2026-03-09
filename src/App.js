@@ -1497,30 +1497,22 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     try {
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
+                        
+                        // 1. Get the correct path for GitHub Pages
                         const swPath = window.location.pathname.includes('/talk') ? '/talk/firebase-messaging-sw.js' : '/firebase-messaging-sw.js';
-                        const swScope = window.location.pathname.includes('/talk') ? '/talk/' : '/';
                         
-                        const registration = await navigator.serviceWorker.register(swPath, { scope: swScope });
-                        
-                        // Bulletproof: Force the browser to wait until the worker is explicitly "activated"
-                        if (!registration.active) {
-                          const worker = registration.installing || registration.waiting;
-                          if (worker) {
-                            await new Promise((resolve) => {
-                              worker.addEventListener('statechange', (e) => {
-                                if (e.target && e.target.state === 'activated') resolve();
-                              });
-                            });
-                          }
-                        }
-                        
-                        // Double check it's ready for the current scope
-                        const readyReg = await navigator.serviceWorker.ready;
+                        // 2. Register it and wait for the browser to say it's 100% ready
+                        await navigator.serviceWorker.register(swPath);
+                        const registration = await navigator.serviceWorker.ready;
                         
                         const messaging = firebase.messaging();
+                        
+                        // 3. THIS IS THE FIX: Tell Firebase v8 explicitly to use THIS worker
+                        messaging.useServiceWorker(registration);
+                        
+                        // 4. Now ask for the token (Do not pass the registration in here)
                         const token = await messaging.getToken({ 
-                          vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0',
-                          serviceWorkerRegistration: readyReg 
+                          vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0' 
                         });
                         
                         if (token && auth.currentUser) {
