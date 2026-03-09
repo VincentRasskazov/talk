@@ -1527,8 +1527,13 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                       }
                     } catch (err) {
                       console.error(err);
-                      if (err.message && err.message.includes("quota")) alert("Quota exceeded.");
-                      else alert("Error enabling notifications: " + err.message);
+                      if (err.message && err.message.toLowerCase().includes("storage error")) {
+                        alert("Browser Blocked Storage: We cannot enable notifications. Please make sure you are not in Incognito Mode and that 'Block Third-Party Cookies' is disabled in your browser settings.");
+                      } else if (err.message && err.message.includes("quota")) {
+                        alert("Quota exceeded.");
+                      } else {
+                        alert("Error enabling notifications: " + err.message);
+                      }
                     }
                   }}>Enable</button>
                 </div>
