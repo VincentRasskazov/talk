@@ -1498,7 +1498,10 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
                         const swPath = window.location.pathname.includes('/talk') ? '/talk/firebase-messaging-sw.js' : '/firebase-messaging-sw.js';
-                        const registration = await navigator.serviceWorker.register(swPath);
+                        await navigator.serviceWorker.register(swPath);
+                        
+                        // Force the app to wait until the service worker is fully active
+                        const registration = await navigator.serviceWorker.ready;
                         
                         const messaging = firebase.messaging();
                         const token = await messaging.getToken({ 
