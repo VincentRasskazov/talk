@@ -177,12 +177,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || userLoading) return;
     if (userDoc && userDoc.banned) return;
-    if (userRef) {
-      userRef.set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
+    // Only set initial data if the Firestore document doesn't exist yet!
+    if (!userDoc || !userDoc.uid) {
+      firestore.collection('users').doc(user.uid).set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
     }
-  }, [user]);
+  }, [user, userDoc, userLoading]);
 
   if (loading) return <div style={{background: '#313338', height: '100%'}}></div>;
 
@@ -795,6 +796,19 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
 }
 
 function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(msg.text || '');
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    if (editText.trim() && editText !== msg.text) {
+      try {
+        await msgRef.update({ text: editText.trim(), isEdited: true });
+      } catch(err) { console.error(err); }
+    }
+    setIsEditing(false);
+  };
+
   const toggleReact = async (em) => {
     if(isGuest || !auth.currentUser) {
       if (onLoginClick) onLoginClick();
@@ -829,10 +843,17 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
         <div className="msg-author-row">
           <span className="msg-author" onClick={openProfile}>{msg.displayName}</span>
           {serverOwner && msg.uid === serverOwner && <span style={{background: '#f0b232', color: '#1e1f22', fontSize: '10px', padding: '2px 4px', borderRadius: '4px', marginLeft: '6px', fontWeight: 'bold'}}>OWNER</span>}
-          <span className="msg-timestamp">{formatTimestamp(msg.createdAt)}</span>
-        </div>
-        {msg.text && <p>{msg.text}</p>}
-        {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onClick={()=>setZoomImage(msg.fileData)} />}
+          <span className="msg-timestamp">{formatTimestamp(msg.createdAt)}{msg && msg.isEdited ? ' (edited)' : ''}</span>
+      </div>
+      {isEditing ? (
+        <form onSubmit={saveEdit} style={{ margin: '4px 0', padding: 0, background: 'transparent', minHeight: 'auto', border: 'none', boxShadow: 'none' }}>
+          <input type="text" value={editText} onChange={(e) => setEditText(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #5865F2', background: '#1e1f22', color: '#dbdee1' }} autoFocus />
+          <div style={{ fontSize: '11px', color: '#949ba4', marginTop: '4px' }}>Press Enter to save, or <span style={{color: '#5865F2', cursor: 'pointer'}} onClick={() => setIsEditing(false)}>cancel</span>.</div>
+        </form>
+      ) : (
+        msg.text ? <p>{msg.text}</p> : null
+      )}
+      {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onClick={()=>setZoomImage(msg.fileData)} />}
         {msg.fileData && msg.fileType==='file' && <a href={msg.fileData} download={msg.fileName} className="msg-file">📎 Download {msg.fileName}</a>}
         
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -848,9 +869,10 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
       
       {!isGuest && (
         <div className="msg-hover-actions">
-          {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
-          {(auth.currentUser && msg.uid === auth.currentUser.uid) || isAdmin || (serverOwner && auth.currentUser && serverOwner === auth.currentUser.uid) ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
-        </div>
+        {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
+        {auth.currentUser && msg.uid === auth.currentUser.uid ? <button onClick={() => setIsEditing(true)} style={{background:'none', color:'#b5bac1', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>EDIT</button> : null}
+        {(auth.currentUser && msg.uid === auth.currentUser.uid) || isAdmin || (serverOwner && auth.currentUser && serverOwner === auth.currentUser.uid) ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
+      </div>
       )}
     </div>
   )
