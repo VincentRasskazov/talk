@@ -31,12 +31,22 @@ firestore.enablePersistence({ synchronizeTabs: true })
 const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGI5Y2VkIiBzdHJva2Utd2lkdGg9IjEyIi8+PHRleHQgeD0iNTMiIHk9Ijg1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iNDAiIGZpbGw9IiM4YjljZWQiIHRleHQtYW5jaG9yPSJtaWRkbGUiPnQ8L3RleHQ+PC9zdmc+";
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
+// --- AI API INTEGRATION ---
 const BACKEND_URL = "https://backendai-ablv.onrender.com";
 const SECRET_SALT = "vincent-gemini-ultra-secure-salt-2026-x";
 const AI_MODELS = {
-  '@deepseek': 'deepai-deepseek', '@llama': 'deepai-llama', '@qwen': 'deepai-qwen',
-  '@chatgpt': 'g4f', '@gpt5': 'useai', '@copilot': 'copilot', '@venice': 'venice',
-  '@overchat': 'overchat', '@talkai': 'talkai', '@notegpt': 'notegpt', '@chatplus': 'chatplus', '@horde': 'horde'
+  '@deepseek': 'deepai-deepseek',
+  '@llama': 'deepai-llama',
+  '@qwen': 'deepai-qwen',
+  '@chatgpt': 'g4f',
+  '@gpt5': 'useai',
+  '@copilot': 'copilot',
+  '@venice': 'venice',
+  '@overchat': 'overchat',
+  '@talkai': 'talkai',
+  '@notegpt': 'notegpt',
+  '@chatplus': 'chatplus',
+  '@horde': 'horde'
 };
 
 async function generateToken(msgId) {
@@ -67,7 +77,7 @@ const compressImage = (file, maxWidth, maxHeight, callback) => {
       if (h > maxHeight) { w *= maxHeight / h; h = maxHeight; }
       cvs.width = w; cvs.height = h;
       cvs.getContext('2d').drawImage(img, 0, 0, w, h);
-      callback(cvs.toDataURL('image/jpeg', 0.7)); // Compressed
+      callback(cvs.toDataURL('image/jpeg', 0.7));
     };
     img.src = e.target.result;
   };
@@ -97,12 +107,20 @@ if (localStorage.getItem('monoFont') === 'true') document.body.classList.add('ha
 
 function QuotaBanner() {
   const [timeLeft, setTimeLeft] = useState('');
+  const [localTime, setLocalTime] = useState('');
+
   useEffect(() => {
     const updateTimer = () => {
       const now = new Date();
       const ptDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
       const nextMidnightPT = new Date(ptDate.getFullYear(), ptDate.getMonth(), ptDate.getDate() + 1);
       const msUntilMidnight = nextMidnightPT.getTime() - ptDate.getTime();
+      
+      if (!localTime) {
+        const resetDateLocal = new Date(now.getTime() + msUntilMidnight);
+        setLocalTime(resetDateLocal.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+
       const hrs = Math.floor((msUntilMidnight / (1000 * 60 * 60)) % 24);
       const mins = Math.floor((msUntilMidnight / 1000 / 60) % 60);
       setTimeLeft(`${hrs}h ${mins}m`);
@@ -110,8 +128,13 @@ function QuotaBanner() {
     updateTimer();
     const interval = setInterval(updateTimer, 60000);
     return () => clearInterval(interval);
-  }, []);
-  return <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. Resets in {timeLeft} (Pacific Time).</div>;
+  }, [localTime]);
+
+  return (
+    <div className="quota-error-banner">
+      ⚠️ Firebase Daily Quota Exceeded. The server resets in {timeLeft} (at {localTime} your local time).
+    </div>
+  );
 }
 
 const EmptyState = ({ title, desc }) => (
@@ -134,8 +157,10 @@ export default function App() {
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
-      const err = args.join(' ');
-      if (err.includes('Quota') || err.includes('resource-exhausted')) setConsoleQuotaError(true);
+      const errorString = args.join(' ');
+      if (errorString.includes('Quota') || errorString.includes('resource-exhausted')) {
+        setConsoleQuotaError(true);
+      }
       originalConsoleError.apply(console, args);
     };
     return () => { console.error = originalConsoleError; };
@@ -150,7 +175,9 @@ export default function App() {
         if (storedHtml && storedHtml !== html) {
            localStorage.setItem('app_version_html', html);
            window.location.reload(true);
-        } else localStorage.setItem('app_version_html', html);
+        } else {
+           localStorage.setItem('app_version_html', html);
+        }
       }).catch(e => console.warn('Version check failed'));
   }, []);
 
@@ -327,11 +354,12 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   
   const [allServers, serversLoading, serversError] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
   const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
+  
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
   const [allDMs, dmsLoading, dmsError] = useCollectionData(dmsQuery, { idField: 'id' });
+  
   const callsQuery = !isGuest && auth.currentUser ? firestore.collection('calls').where('targetUid', '==', auth.currentUser.uid) : null;
   const [userCalls] = useCollectionData(callsQuery, { idField: 'id' });
-  
   const incomingCall = userCalls ? userCalls.find(c => c.status === 'ringing') : null;
 
   useEffect(() => {
@@ -347,16 +375,21 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     servers = allServers.filter(s => {
       if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
       if (isAdmin) return true;
+      if (!s.isPrivate) return true;
       if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
       return false;
     });
   }
 
   let currentUserData = null;
-  if (allUsers && auth.currentUser) currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
+  if (allUsers && auth.currentUser) {
+    currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
+  }
 
   useEffect(() => { 
-    if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
+    if (servers.length > 0 && !currentServer && view === 'servers') {
+      setCurrentServer(servers[0]); 
+    }
   }, [servers, currentServer, view]);
 
   const startDM = async (targetUser) => {
@@ -366,18 +399,25 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     const dmId = uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
     try {
       const dmRef = firestore.collection('dms').doc(dmId);
-      if (!(await dmRef.get()).exists) await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      if (!(await dmRef.get()).exists) {
+        await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }
       setView('dms'); 
       setActiveDM({ id: dmId, target: targetUser });
-    } catch(err) { if(checkQuotaError(err)) alert("Daily quota exceeded."); }
+    } catch(err) {
+      if(checkQuotaError(err)) alert("Daily quota exceeded.");
+    }
   };
 
   const closeAllMenus = () => setMobileNavOpen(false);
 
   return (
     <>
-      {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
-      
+      {isQuotaExceeded && (
+        <div className="quota-error-banner">
+          ⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight Pacific Time (PT).
+        </div>
+      )}
       <div className={`discord-layout ${localStorage.getItem('reverseLayout') === 'true' ? 'layout-reverse' : ''}`}>
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
         {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} />}
@@ -422,7 +462,14 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               const ownerId = auth.currentUser.uid;
               try { 
                 await firestore.collection('servers').add({ 
-                  name: n, icon: n.charAt(0).toUpperCase(), isPrivate: isPriv, owner: ownerId, members: [ownerId], admins: [], banned: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                  name: n, 
+                  icon: n.charAt(0).toUpperCase(), 
+                  isPrivate: isPriv, 
+                  owner: ownerId, 
+                  members: [ownerId], 
+                  admins: [], 
+                  banned: [], 
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp() 
                 }); 
               } catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
             }
@@ -529,6 +576,11 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   useEffect(() => { 
     if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); 
   }, [channels, server]);
+
+  const toggleSidebar = () => { 
+    if (window.innerWidth <= 768) { setMobileNavOpen(true); } 
+    else { setChannelsOpenPC(!channelsOpenPC); }
+  };
 
   const canManage = isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid) || (server.admins && auth.currentUser && server.admins.includes(auth.currentUser.uid));
 
@@ -676,10 +728,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
             ) : (
               <>
                 <main>
-                  {messages && messages.map((m) => {
-                    const authorData = allUsers ? allUsers.find((u) => u.uid === m.uid) : null;
-                    return <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(authorData || m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins} />;
-                  })}
+                  {messages && messages.map((m) => (
+                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins} />
+                  ))}
                   <span ref={dummy}></span>
                 </main>
                 <div className="form-wrapper">
@@ -758,6 +809,14 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [isCaller, setIsCaller] = useState(false);
 
   const [lastMsgId, setLastMsgId] = useState(null);
+
+  useEffect(() => {
+    if (callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '')) {
+      if (window.Notification && Notification.permission === 'granted') {
+         new Notification("Incoming Video Call 📞", { body: activeDM.target.displayName + " is calling you on Talk!", requireInteraction: true });
+      }
+    }
+  }, [callData]);
 
   useEffect(() => {
     if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
