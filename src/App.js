@@ -1220,11 +1220,11 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
 
   const save = async () => {
     if (auth.currentUser) {
-      const inviteCode = isPrivate ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
+      const inviteCode = !isPublic ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
       let members = server.members || [];
-      if (isPrivate && members.length === 0) members = [auth.currentUser.uid];
+      if (!isPublic && members.length === 0) members = [auth.currentUser.uid];
       try {
-        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPrivate, isDiscoverable, inviteCode, members, roles }); 
+        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPublic: isPublic, isDiscoverable: isDiscoverable, inviteCode, members, roles }); 
         close(); 
       } catch (err) {
         if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
@@ -1265,13 +1265,21 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
               <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
               <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
               
-              {(isOwner || isAdmin) && (
+              {isOwner && (
                 <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery (Make Public)</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find and join this server without an invite</span></div>
-                  <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:!isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:!isPrivate?19:3,transition:'0.3s'}}/></div>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server via Discovery</span></div>
+                  <div onClick={()=>setIsDiscoverable(!isDiscoverable)} style={{width:40,height:24,background:isDiscoverable?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isDiscoverable?19:3,transition:'0.3s'}}/></div>
                 </div>
               )}
-              {isPrivate && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+
+              {isAdmin && (
+                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Public Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle ON to make this server public for everyone</span></div>
+                  <div onClick={()=>setIsPublic(!isPublic)} style={{width:40,height:24,background:isPublic?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPublic?19:3,transition:'0.3s'}}/></div>
+                </div>
+              )}
+              
+              {!isPublic && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
               
               <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
                 <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
