@@ -3,6 +3,7 @@ import './App.css';
 import firebase from 'firebase/app';
 import 'firebase/firestore';
 import 'firebase/auth';
+import 'firebase/messaging';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useDocumentData } from 'react-firebase-hooks/firestore';
 
@@ -1204,17 +1205,28 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     <strong style={{color:'#dbdee1', fontSize:14}}>Push Notifications</strong>
                     <span style={{color: '#80848e', fontSize: 11}}>Alerts for new messages</span>
                   </div>
-                  <button className="settings-btn" style={{background: '#5865F2', color: '#fff', fontSize: '12px', padding: '6px 12px'}} onClick={() => {
-                    if (!("Notification" in window)) alert("Browser does not support notifications");
-                    else if (Notification.permission === "granted") {
-                      alert("Notifications are already enabled!");
-                      new Notification("Test Alert", { body: "Notifications are working!" });
+                  <button className="settings-btn" style={{background: '#5865F2', color: '#fff', fontSize: '12px', padding: '6px 12px'}} onClick={async () => {
+                    if (!("Notification" in window)) return alert("Browser does not support notifications");
+                    try {
+                      const permission = await Notification.requestPermission();
+                      if (permission === 'granted') {
+                        const messaging = firebase.messaging();
+                        const token = await messaging.getToken({ vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0' });
+                        
+                        if (token && auth.currentUser) {
+                          await firestore.collection('users').doc(auth.currentUser.uid).update({ fcmToken: token });
+                          alert("Push notifications successfully enabled and linked to your account!");
+                        } else {
+                          alert("Failed to generate push token.");
+                        }
+                      } else {
+                        alert("You blocked notifications in your browser settings.");
+                      }
+                    } catch (err) {
+                      console.error(err);
+                      if (err.message && err.message.includes("quota")) alert("Quota exceeded.");
+                      else alert("Error enabling notifications: " + err.message);
                     }
-                    else if (Notification.permission !== "denied") {
-                      Notification.requestPermission().then((p) => {
-                        if (p === "granted") new Notification("Success", { body: "Notifications are now active!" });
-                      });
-                    } else alert("You have blocked notifications in your browser settings.");
                   }}>Enable</button>
                 </div>
               </div>
