@@ -341,8 +341,9 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
     try {
       const currentRoles = (currentServer.userRoles && currentServer.userRoles[userProfile.uid]) || [];
       const newRoles = currentRoles.includes(roleId) ? currentRoles.filter(id => id !== roleId) : [...currentRoles, roleId];
-      await firestore.collection('servers').doc(currentServer.id).update({ [`userRoles.${userProfile.uid}`]: newRoles });
-    } catch(e) { alert("Failed to assign role."); }
+      // Using set with merge avoids crashing if the 'userRoles' parent object hasn't been created yet
+      await firestore.collection('servers').doc(currentServer.id).set({ userRoles: { [userProfile.uid]: newRoles } }, { merge: true });
+    } catch(e) { alert("Failed to assign role: " + e.message); }
   };
 
   const banFromServer = async () => {
@@ -467,6 +468,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
   }, [servers, currentServer, view]);
 
+  const unreadDMs = allDMs ? allDMs.filter(dm => dm.updatedAt && dm.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') && (!activeDM || activeDM.id !== dm.id)) : [];
+
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
     const uid1 = auth.currentUser.uid; 
@@ -509,6 +512,20 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
             <div className={`server-icon ${view === 'discovery' ? 'active' : ''}`} style={{background: '#23a559', borderRadius: view==='discovery'?16:24}} title="Discover Servers">🌍</div>
           </div>
           <div className="divider"></div>
+          
+          {unreadDMs.map(dm => {
+            const otherUid = dm.users.find(id => auth.currentUser && id !== auth.currentUser.uid);
+            const otherUser = allUsers ? allUsers.find(u => u.uid === otherUid) : null;
+            if(!otherUser) return null;
+            return (
+              <div key={dm.id} className="server-icon-wrapper" onClick={() => { setView('dms'); setActiveDM({id: dm.id, target: otherUser}); setMobileNavOpen(true); setCurrentServer(null); }}>
+                <div style={{position: 'absolute', left: -4, width: 8, height: 8, borderRadius: '50%', background: '#fff'}} />
+                <img src={otherUser.photoURL || DEFAULT_AVATAR} className="server-icon" alt="DM" style={{borderRadius: '50%', border: `2px solid ${themeColor}`}} title={`Unread message from ${otherUser.displayName}`} />
+              </div>
+            )
+          })}
+          {unreadDMs.length > 0 && <div className="divider"></div>}
+
           {servers.map(s => {
             const isActive = currentServer && currentServer.id === s.id && view === 'servers';
             const hasImage = s.icon && s.icon.startsWith('data:');
@@ -641,6 +658,17 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     const input = document.getElementById('server-chat-input'); if (input) input.focus();
   };
 
+  const handlePaste = (e) => {
+    if(e.clipboardData && e.clipboardData.items) {
+      for(let i=0; i<e.clipboardData.items.length; i++) {
+        if(e.clipboardData.items[i].type.indexOf('image') !== -1) {
+          const blob = e.clipboardData.items[i].getAsFile();
+          handleFile({ target: { files: [blob] } });
+        }
+      }
+    }
+  };
+
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
   const members = allUsers ? allUsers.filter(u => !u.banned && (server.isPrivate ? server.members && server.members.includes(u.uid) : true)) : [];
   const userMatches = mentionQuery !== null ? members.filter(u => u.displayName.toLowerCase().includes(mentionQuery)) : [];
@@ -737,7 +765,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                     <div className="upload-btn">
                       <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
                     </div>
-                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
+                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message #${channel.name} (or Paste Image)`} autoComplete="off" />
                     <button type="submit" style={{display:'none'}}></button>
                   </form>}
                 </div>
@@ -839,6 +867,17 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     const input = document.getElementById('dm-chat-input'); if (input) input.focus();
   };
 
+  const handlePaste = (e) => {
+    if(e.clipboardData && e.clipboardData.items) {
+      for(let i=0; i<e.clipboardData.items.length; i++) {
+        if(e.clipboardData.items[i].type.indexOf('image') !== -1) {
+          const blob = e.clipboardData.items[i].getAsFile();
+          handleFile({ target: { files: [blob] } });
+        }
+      }
+    }
+  };
+
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
   const userMatches = mentionQuery !== null && allUsers ? allUsers.filter(u => !u.banned && u.displayName.toLowerCase().includes(mentionQuery)) : [];
   let sortedDMs = dms ? [...dms].sort((a,b) => ((b && b.updatedAt && b.updatedAt.toMillis) ? b.updatedAt.toMillis() : 0) - ((a && a.updatedAt && a.updatedAt.toMillis) ? a.updatedAt.toMillis() : 0)) : [];
@@ -906,7 +945,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                     + <input type="file" style={{display:'none'}} onChange={handleFile} />
                   </label>
                 </div>
-                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
+                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message @${activeDM.target.displayName} (or Paste Image)`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
               </form>
             </div>
