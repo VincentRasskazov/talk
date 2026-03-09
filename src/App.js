@@ -300,10 +300,10 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
               </div>
               <p style={{color: '#dbdee1', fontSize: 14, margin: 0, flex: 1}}>{s.description || "No description provided."}</p>
               <div style={{color: '#949ba4', fontSize: 12}}>👥 {(s.members || []).length} Members</div>
-              {isMember ? 
+              {isMember || isGuest ? 
                 <div style={{display: 'flex', gap: '8px'}}>
-                  <button onClick={() => {setCurrentServer(s); setView('servers');}} style={{flex: 1, background: '#4e5058', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Go to Server</button>
-                  {auth.currentUser && s.owner !== auth.currentUser.uid && <button onClick={() => leave(s)} style={{background: '#da373c', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Leave</button>}
+                  <button onClick={() => {setCurrentServer(s); setView('servers');}} style={{flex: 1, background: '#4e5058', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>{isGuest ? 'Preview Server' : 'Go to Server'}</button>
+                  {!isGuest && auth.currentUser && s.owner !== auth.currentUser.uid && <button onClick={() => leave(s)} style={{background: '#da373c', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Leave</button>}
                 </div> :
                 <button onClick={() => join(s)} style={{background: theme, color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Join Server</button>
               }
@@ -453,7 +453,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     servers = allServers.filter(s => {
       if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
       if (isAdmin) return true;
-      if (s.isPublic) return true; // Only Admin can make servers auto-appear for everyone
+      if (s.isPublic) return true; 
+      if (isGuest && currentServer && currentServer.id === s.id) return true; // Allow guests to preview via sidebar
       if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
       return false;
     });
@@ -511,8 +512,10 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
           {servers.map(s => {
             const isActive = currentServer && currentServer.id === s.id && view === 'servers';
             const hasImage = s.icon && s.icon.startsWith('data:');
+            const isUnread = s.updatedAt && s.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') && !isActive;
             return (
               <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
+                {isUnread && <div style={{position: 'absolute', left: -4, width: 8, height: 8, borderRadius: '50%', background: '#fff'}} />}
                 <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`} : {}} title={s.name}>
                   {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
                 </div>
@@ -565,11 +568,15 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   }
 
   useEffect(() => { 
+    if (channel && server) {
+      localStorage.setItem(`read_chan_${channel.id}`, Date.now().toString());
+      localStorage.setItem(`read_server_${server.id}`, Date.now().toString());
+    }
     const timer = setTimeout(() => {
       if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, 150);
     return () => clearTimeout(timer);
-  }, [messages]);
+  }, [messages, channel, server]);
   useEffect(() => { if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); }, [channels, server]);
 
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
@@ -595,7 +602,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if (msgsRef && auth.currentUser) {
       try {
         await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        setForm(''); setFile(null); 
+        await firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        await firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        setForm(''); setFile(null);
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
@@ -663,12 +672,18 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                 <div onClick={() => setCollapsedCats({...collapsedCats, [catName]: !isCollapsed})} style={{color: '#949ba4', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', padding: '16px 8px 4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: '0.2s', userSelect: 'none'}}>
                   <span style={{transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: '0.2s', display: 'inline-block'}}>▼</span> {catName}
                 </div>
-                {!isCollapsed && categories[catName].map(c => (
-                  <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
-                    <span className="channel-name"><span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}</span>
-                    {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
-                  </div>
-                ))}
+                {!isCollapsed && categories[catName].map(c => {
+                  const isUnread = c.updatedAt && c.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_chan_${c.id}`) || '0') && (!channel || channel.id !== c.id);
+                  return (
+                    <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
+                      <span className="channel-name" style={{color: isUnread ? '#fff' : '', fontWeight: isUnread ? 'bold' : '500'}}>
+                        <span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}
+                        {isUnread && <div style={{width: 6, height: 6, borderRadius: '50%', background: '#fff', marginLeft: 6}} />}
+                      </span>
+                      {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -760,11 +775,12 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
 
   useEffect(() => { 
+    if (activeDM) localStorage.setItem(`read_dm_${activeDM.id}`, Date.now().toString());
     const timer = setTimeout(() => {
       if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, 150);
     return () => clearTimeout(timer);
-  }, [messages]);
+  }, [messages, activeDM]);
 
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
 
@@ -836,9 +852,14 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             const otherUid = dm.users.find(id => auth.currentUser && id !== auth.currentUser.uid);
             const otherUser = allUsers ? allUsers.find(u => u.uid === otherUid) : null;
             if(!otherUser) return null;
+            const isUnread = dm.updatedAt && dm.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') && (!activeDM || activeDM.id !== dm.id);
             return (
               <div key={dm.id} className={`channel ${activeDM && activeDM.id===dm.id ? 'active':''}`} onClick={()=>{setActiveDM({id: dm.id, target: otherUser}); closeAllMenus();}}>
-                <div style={{display:'flex', alignItems:'center', gap:10}}><img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />{otherUser.displayName}</div>
+                <div style={{display:'flex', alignItems:'center', gap:10, color: isUnread ? '#fff' : '', fontWeight: isUnread ? 'bold' : 'normal'}}>
+                  <img src={otherUser.photoURL || DEFAULT_AVATAR} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}} alt="" />
+                  {otherUser.displayName}
+                  {isUnread && <div style={{width: 8, height: 8, borderRadius: '50%', background: theme, marginLeft: 'auto'}} />}
+                </div>
               </div>
             )
           })}
