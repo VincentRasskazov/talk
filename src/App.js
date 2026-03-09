@@ -439,7 +439,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
       <div className={`discord-layout ${localStorage.getItem('reverseLayout') === 'true' ? 'layout-reverse' : ''}`}>
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
-        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} />}
+        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} allUsers={allUsers} />}
         <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} currentServer={currentServer} setView={setView} />
         {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
         <div className="sidebar" style={{paddingTop: 12}}>
@@ -492,6 +492,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
   const [rateLimitTimer, setRateLimitTimer] = useState([]);
+  const [collapsedCats, setCollapsedCats] = useState({});
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
@@ -596,17 +597,22 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           }}>+</button>}
         </div>
         <div className="channel-list" style={{overflowY: 'auto'}}>
-          {Object.keys(categories).map(catName => (
-            <div key={catName}>
-              <div style={{color: '#949ba4', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', padding: '16px 8px 4px 8px'}}>{catName}</div>
-              {categories[catName].map(c => (
-                <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
-                  <span className="channel-name"><span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}</span>
-                  {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+          {Object.keys(categories).map(catName => {
+            const isCollapsed = collapsedCats[catName];
+            return (
+              <div key={catName}>
+                <div onClick={() => setCollapsedCats({...collapsedCats, [catName]: !isCollapsed})} style={{color: '#949ba4', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', padding: '16px 8px 4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: '0.2s', userSelect: 'none'}}>
+                  <span style={{transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: '0.2s', display: 'inline-block'}}>▼</span> {catName}
                 </div>
-              ))}
-            </div>
-          ))}
+                {!isCollapsed && categories[catName].map(c => (
+                  <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
+                    <span className="channel-name"><span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}</span>
+                    {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
         <div className="user-panel">
           <div className="user-panel-info" onClick={()=>!isGuest && openProfile(myData)}>
@@ -1151,7 +1157,8 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   )
 }
 
-function ServerSettingsModal({ server, close, theme }) {
+function ServerSettingsModal({ server, close, theme, setView, allUsers }) {
+  const [tab, setTab] = useState('overview');
   const [name, setName] = useState(server.name); 
   const [description, setDescription] = useState(server.description || '');
   const [icon, setIcon] = useState(server.icon || '');
@@ -1159,7 +1166,26 @@ function ServerSettingsModal({ server, close, theme }) {
   const [isPrivate, setPrivate] = useState(server.isPrivate || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
 
-  const save = async () => { 
+  const isOwner = auth.currentUser && server.owner === auth.currentUser.uid;
+  const bannedUsers = allUsers ? allUsers.filter(u => server.banned && server.banned.includes(u.uid)) : [];
+
+  const unbanUser = async (uid) => {
+    try {
+      await firestore.collection('servers').doc(server.id).update({ banned: firebase.firestore.FieldValue.arrayRemove(uid) });
+    } catch (err) { alert(err.message); }
+  };
+
+  const deleteServer = async () => {
+    if (window.confirm(`Are you absolutely sure you want to delete ${server.name}? This cannot be undone.`)) {
+      try {
+        await firestore.collection('servers').doc(server.id).delete();
+        setView('discovery');
+        close();
+      } catch(err) { alert(err.message); }
+    }
+  };
+
+  const save = async () => {
     if (auth.currentUser) {
       const inviteCode = isPrivate ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
       let members = server.members || [];
@@ -1175,50 +1201,87 @@ function ServerSettingsModal({ server, close, theme }) {
 
   return (
     <div className="overlay" style={{zIndex:1002}}>
-      <div className="modal-box" style={{width: 500}}>
-        <h2 style={{margin:0, color:'#fff'}}>Server Customization</h2>
-        
-        <div style={{display: 'flex', gap: '20px', alignItems: 'flex-start', marginTop: 10}}>
-          <div style={{display:'flex', flexDirection:'column', gap: 12, alignItems: 'center'}}>
-            <div style={{width:80, height:80, borderRadius:'50%', background: icon && icon.startsWith('data:') ? `url(${icon}) center/cover` : theme, display:'flex', justifyContent:'center', alignItems:'center', color:'white', fontWeight:'bold', fontSize:'28px', boxShadow:'0 4px 8px rgba(0,0,0,0.3)'}}>
-               {(!icon || !icon.startsWith('data:')) ? (icon || name.charAt(0).toUpperCase()) : ''}
-            </div>
-            <label className="b64-upload-btn" style={{margin: 0}}>Upload Icon<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 150, 150, setIcon)} /></label>
-          </div>
-          
-          <div style={{flex: 1, display:'flex', flexDirection:'column', gap: 12}}>
-            <div style={{width:'100%', height:80, borderRadius:8, background: bannerURL ? `url(${bannerURL}) center/cover` : '#1e1f22', border: '1px solid #1e1f22'}}></div>
-            <label className="b64-upload-btn" style={{margin: 0, alignSelf:'flex-start'}}>Upload Banner<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 600, 200, setBannerURL)} /></label>
-          </div>
+      <div className="modal-box" style={{width: 550, padding: 0, overflow: 'hidden'}}>
+        <div style={{display: 'flex', background: '#2b2d31', borderBottom: '1px solid #1e1f22'}}>
+          <button onClick={() => setTab('overview')} style={{flex: 1, padding: 16, background: tab === 'overview' ? '#35373c' : 'transparent', color: tab === 'overview' ? '#fff' : '#b5bac1', borderRadius: 0}}>Overview</button>
+          <button onClick={() => setTab('moderation')} style={{flex: 1, padding: 16, background: tab === 'moderation' ? '#35373c' : 'transparent', color: tab === 'moderation' ? '#fff' : '#b5bac1', borderRadius: 0}}>Moderation</button>
+          {isOwner && <button onClick={() => setTab('danger')} style={{flex: 1, padding: 16, background: tab === 'danger' ? '#da373c' : 'transparent', color: tab === 'danger' ? '#fff' : '#b5bac1', borderRadius: 0}}>Danger Zone</button>}
         </div>
+        
+        <div style={{padding: 24, maxHeight: '70vh', overflowY: 'auto'}}>
+          {tab === 'overview' && (
+            <>
+              <div style={{display: 'flex', gap: '20px', alignItems: 'flex-start'}}>
+                <div style={{display:'flex', flexDirection:'column', gap: 12, alignItems: 'center'}}>
+                  <div style={{width:80, height:80, borderRadius:'50%', background: icon && icon.startsWith('data:') ? `url(${icon}) center/cover` : theme, display:'flex', justifyContent:'center', alignItems:'center', color:'white', fontWeight:'bold', fontSize:'28px', boxShadow:'0 4px 8px rgba(0,0,0,0.3)'}}>
+                     {(!icon || !icon.startsWith('data:')) ? (icon || name.charAt(0).toUpperCase()) : ''}
+                  </div>
+                  <label className="b64-upload-btn" style={{margin: 0}}>Upload Icon<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 150, 150, setIcon)} /></label>
+                </div>
+                
+                <div style={{flex: 1, display:'flex', flexDirection:'column', gap: 12}}>
+                  <div style={{width:'100%', height:80, borderRadius:8, background: bannerURL ? `url(${bannerURL}) center/cover` : '#1e1f22', border: '1px solid #1e1f22'}}></div>
+                  <label className="b64-upload-btn" style={{margin: 0, alignSelf:'flex-start'}}>Upload Banner<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 600, 200, setBannerURL)} /></label>
+                </div>
+              </div>
 
-        <label style={{marginTop: 16}}>SERVER NAME</label>
-        <input value={name} onChange={e=>setName(e.target.value)} />
-        
-        <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
-        <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
-        
-        {auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com' && (
-          <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-            <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Requires Invite Code to join</span></div>
-            <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
-          </div>
-        )}
-        {isPrivate && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
-        
-        <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-          <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
-          <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
+              <label style={{marginTop: 16}}>SERVER NAME</label>
+              <input value={name} onChange={e=>setName(e.target.value)} />
+              
+              <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
+              <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
+              
+              {isOwner && (
+                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Hide from Discovery & require Invite Code</span></div>
+                  <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
+                </div>
+              )}
+              {isPrivate && isOwner && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+              
+              <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
+                <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
+              </div>
+            </>
+          )}
+
+          {tab === 'moderation' && (
+            <>
+              <h3 style={{color: '#fff', marginTop: 0}}>Banned Users</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Manage users who have been banned from this server.</p>
+              {bannedUsers.length === 0 ? <div style={{color: '#80848e', fontStyle: 'italic', padding: 16, textAlign: 'center', background: '#1e1f22', borderRadius: 8}}>No banned users.</div> : bannedUsers.map(u => (
+                <div key={u.uid} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, border: '1px solid #1e1f22'}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
+                    <img src={u.photoURL || DEFAULT_AVATAR} style={{width: 32, height: 32, borderRadius: '50%'}} alt="pfp" />
+                    <strong style={{color: '#fff'}}>{u.displayName}</strong>
+                  </div>
+                  <button onClick={() => unbanUser(u.uid)} style={{background: '#35373c', color: '#dbdee1', padding: '6px 12px', fontSize: 12}}>Revoke Ban</button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {tab === 'danger' && isOwner && (
+            <>
+              <h3 style={{color: '#da373c', marginTop: 0}}>Danger Zone</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Irreversible actions for your server.</p>
+              <div style={{border: '1px solid #da373c', borderRadius: 8, padding: 16, background: 'rgba(218, 55, 60, 0.1)'}}>
+                <strong style={{color: '#fff'}}>Delete Server</strong>
+                <p style={{color: '#dbdee1', fontSize: 13, marginTop: 4, marginBottom: 16}}>This will permanently delete the server, all channels, and all messages. This action cannot be undone.</p>
+                <button onClick={deleteServer} style={{background: '#da373c', color: '#fff', padding: '10px 16px', width: '100%'}}>Delete Server</button>
+              </div>
+            </>
+          )}
         </div>
         
-        <div style={{display: 'flex', gap: '12px', marginTop: '24px'}}>
+        <div style={{display: 'flex', gap: '12px', padding: 24, background: '#2b2d31', borderTop: '1px solid #1e1f22'}}>
           <button onClick={close} style={{flex: 1, background: '#4e5058', color: 'white', padding: '14px'}}>Cancel</button>
-          <button onClick={save} style={{flex: 1, background: theme, color: 'white', padding: '14px'}}>Save Server</button>
+          <button onClick={save} style={{flex: 1, background: theme, color: 'white', padding: '14px'}}>Save Changes</button>
         </div>
       </div>
     </div>
   )
-}
 
 // --- WEBRTC VIDEO ENGINE ---
 const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
