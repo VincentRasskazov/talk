@@ -271,6 +271,18 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
       setCurrentServer(s); setView('servers');
     } catch(e) { alert("Failed to join."); }
   };
+
+  const leave = async (s) => {
+    if(isGuest || !auth.currentUser) return;
+    if(window.confirm(`Leave ${s.name}?`)) {
+      try {
+        await firestore.collection('servers').doc(s.id).update({ 
+          members: firebase.firestore.FieldValue.arrayRemove(auth.currentUser.uid),
+          admins: firebase.firestore.FieldValue.arrayRemove(auth.currentUser.uid)
+        });
+      } catch(e) { alert("Failed to leave."); }
+    }
+  };
   return (
     <div className="chat-container" style={{padding: '40px', overflowY: 'auto', background: '#313338'}}>
       <h1 style={{color: 'white', marginTop: 0, marginBottom: 10}}>🌍 Discover Public Servers</h1>
@@ -289,7 +301,10 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
               <p style={{color: '#dbdee1', fontSize: 14, margin: 0, flex: 1}}>{s.description || "No description provided."}</p>
               <div style={{color: '#949ba4', fontSize: 12}}>👥 {(s.members || []).length} Members</div>
               {isMember ? 
-                <button onClick={() => {setCurrentServer(s); setView('servers');}} style={{background: '#4e5058', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Go to Server</button> :
+                <div style={{display: 'flex', gap: '8px'}}>
+                  <button onClick={() => {setCurrentServer(s); setView('servers');}} style={{flex: 1, background: '#4e5058', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Go to Server</button>
+                  {auth.currentUser && s.owner !== auth.currentUser.uid && <button onClick={() => leave(s)} style={{background: '#da373c', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Leave</button>}
+                </div> :
                 <button onClick={() => join(s)} style={{background: theme, color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Join Server</button>
               }
             </div>
@@ -307,6 +322,9 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   const isServerAdmin = currentServer && currentServer.admins && auth.currentUser && currentServer.admins.includes(auth.currentUser.uid);
   const canManage = isSuperAdmin || isServerOwner || isServerAdmin;
   const targetIsAdmin = currentServer && currentServer.admins && currentServer.admins.includes(userProfile.uid);
+
+  const targetIsOwner = currentServer && currentServer.owner === userProfile.uid;
+  const canBan = isSuperAdmin || isServerOwner || (isServerAdmin && !targetIsAdmin && !targetIsOwner);
 
   const toggleAdmin = async () => {
     try {
@@ -354,10 +372,10 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
           </div>
           {!isGuest && !isSelf && <button onClick={() => { close(); startDM(userProfile); }} style={{width: '100%', padding: 14, background: themeColor, color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Send Message</button>}
           {isGuest && <button onClick={onLoginClick} style={{width: '100%', padding: 14, background: '#4e5058', color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Log in to interact</button>}
-          {canManage && !isSelf && currentServer && currentServer.owner !== userProfile.uid && userProfile.email !== 'vincentr111222@gmail.com' && (
+          {!isSelf && currentServer && !targetIsOwner && userProfile.email !== 'vincentr111222@gmail.com' && (
              <div style={{display: 'flex', gap: 8, marginTop: 16}}>
                {isServerOwner && <button onClick={toggleAdmin} style={{flex: 1, padding: 10, background: '#35373c', color: '#fff', borderRadius: 6, border: '1px solid #5865F2'}}>{targetIsAdmin ? 'Remove Admin' : 'Make Admin'}</button>}
-               <button onClick={banFromServer} style={{flex: 1, padding: 10, background: '#da373c', color: '#fff', borderRadius: 6, border: 'none'}}>Ban from Server</button>
+               {canBan && <button onClick={banFromServer} style={{flex: 1, padding: 10, background: '#da373c', color: '#fff', borderRadius: 6, border: 'none'}}>Ban from Server</button>}
              </div>
           )}
         </div>
@@ -488,7 +506,12 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     });
   }
 
-  useEffect(() => { if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { 
+    const timer = setTimeout(() => {
+      if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [messages]);
   useEffect(() => { if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); }, [channels, server]);
 
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
@@ -669,7 +692,12 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
 
-  useEffect(() => { if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { 
+    const timer = setTimeout(() => {
+      if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [messages]);
 
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
 
