@@ -262,7 +262,7 @@ function AuthScreen({ themeColor, goBack }) {
 }
 
 function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest }) {
-  const publicServers = allServers ? allServers.filter(s => !s.isPrivate) : [];
+  const publicServers = allServers ? allServers.filter(s => !s.isPrivate && s.isDiscoverable) : [];
   const join = async (s) => {
     if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
     if(s.banned && s.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
@@ -919,13 +919,21 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
         )}
       </div>
       
-      {!isGuest && (
-        <div className="msg-hover-actions">
-        {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
-        {auth.currentUser && msg.uid === auth.currentUser.uid ? <button onClick={() => setIsEditing(true)} style={{background:'none', color:'#b5bac1', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>EDIT</button> : null}
-        {(auth.currentUser && msg.uid === auth.currentUser.uid) || isAdmin || (serverOwner && auth.currentUser && serverOwner === auth.currentUser.uid) ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
-      </div>
-      )}
+      {!isGuest && (() => {
+        const isMyMsg = auth.currentUser && msg.uid === auth.currentUser.uid;
+        const amIOwner = auth.currentUser && serverOwner && auth.currentUser.uid === serverOwner;
+        const amIAdmin = auth.currentUser && serverAdmins && serverAdmins.includes(auth.currentUser.uid);
+        const isMsgFromOwner = serverOwner && msg.uid === serverOwner;
+        const canDelete = isMyMsg || isAdmin || amIOwner || (amIAdmin && !isMsgFromOwner);
+        
+        return (
+          <div className="msg-hover-actions">
+            {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
+            {isMyMsg ? <button onClick={() => setIsEditing(true)} style={{background:'none', color:'#b5bac1', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>EDIT</button> : null}
+            {canDelete ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
+          </div>
+        );
+      })()}
     </div>
   )
 }
@@ -1181,8 +1189,10 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const [description, setDescription] = useState(server.description || '');
   const [icon, setIcon] = useState(server.icon || '');
   const [bannerURL, setBannerURL] = useState(server.bannerURL || '');
-  const [isPrivate, setPrivate] = useState(server.isPrivate || false);
+  const [isPrivate, setPrivate] = useState(server.isPrivate !== undefined ? server.isPrivate : true);
+  const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
+  const [roles, setRoles] = useState(server.roles || []);
 
   const isOwner = auth.currentUser && server.owner === auth.currentUser.uid;
   const bannedUsers = allUsers ? allUsers.filter(u => server.banned && server.banned.includes(u.uid)) : [];
@@ -1209,7 +1219,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
       let members = server.members || [];
       if (isPrivate && members.length === 0) members = [auth.currentUser.uid];
       try {
-        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPrivate, inviteCode, members }); 
+        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPrivate, isDiscoverable, inviteCode, members, roles }); 
         close(); 
       } catch (err) {
         if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
@@ -1222,6 +1232,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
       <div className="modal-box" style={{width: 550, padding: 0, overflow: 'hidden'}}>
         <div style={{display: 'flex', background: '#2b2d31', borderBottom: '1px solid #1e1f22'}}>
           <button onClick={() => setTab('overview')} style={{flex: 1, padding: 16, background: tab === 'overview' ? '#35373c' : 'transparent', color: tab === 'overview' ? '#fff' : '#b5bac1', borderRadius: 0}}>Overview</button>
+          {isOwner && <button onClick={() => setTab('roles')} style={{flex: 1, padding: 16, background: tab === 'roles' ? '#35373c' : 'transparent', color: tab === 'roles' ? '#fff' : '#b5bac1', borderRadius: 0}}>Roles</button>}
           <button onClick={() => setTab('moderation')} style={{flex: 1, padding: 16, background: tab === 'moderation' ? '#35373c' : 'transparent', color: tab === 'moderation' ? '#fff' : '#b5bac1', borderRadius: 0}}>Moderation</button>
           {isOwner && <button onClick={() => setTab('danger')} style={{flex: 1, padding: 16, background: tab === 'danger' ? '#da373c' : 'transparent', color: tab === 'danger' ? '#fff' : '#b5bac1', borderRadius: 0}}>Danger Zone</button>}
         </div>
@@ -1249,9 +1260,16 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
               <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
               <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
               
+              {isOwner && (
+                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server (if Admin approves)</span></div>
+                  <div onClick={()=>setIsDiscoverable(!isDiscoverable)} style={{width:40,height:24,background:isDiscoverable?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isDiscoverable?19:3,transition:'0.3s'}}/></div>
+                </div>
+              )}
+
               {isAdmin && (
                 <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle off to feature this server on the Discovery page</span></div>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle off to make this server public</span></div>
                   <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
                 </div>
               )}
@@ -1261,6 +1279,26 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
                 <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
                 <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
               </div>
+            </>
+          )}
+
+          {tab === 'roles' && isOwner && (
+            <>
+              <h3 style={{color: '#fff', marginTop: 0}}>Custom Roles</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Create custom roles with specific colors.</p>
+              
+              <div style={{display: 'flex', gap: 8, marginBottom: 16}}>
+                <button onClick={() => setRoles([...roles, { id: Date.now().toString(), name: 'New Role', color: '#99aab5' }])} style={{background: theme, color: '#fff', padding: '8px 16px'}}>+ Create Role</button>
+              </div>
+
+              {roles.map((r, i) => (
+                <div key={r.id} style={{display: 'flex', gap: 12, background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, alignItems: 'center', border: '1px solid #1e1f22'}}>
+                  <div style={{width: 24, height: 24, borderRadius: '50%', background: r.color, flexShrink: 0}}></div>
+                  <input value={r.name} onChange={(e) => { const newRoles = [...roles]; newRoles[i].name = e.target.value; setRoles(newRoles); }} style={{margin: 0, padding: 8}} placeholder="Role Name" />
+                  <input type="color" value={r.color} onChange={(e) => { const newRoles = [...roles]; newRoles[i].color = e.target.value; setRoles(newRoles); }} style={{width: 40, height: 36, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer'}} />
+                  <button onClick={() => setRoles(roles.filter(role => role.id !== r.id))} style={{background: '#da373c', color: '#fff', padding: '8px', fontSize: 12}}>DEL</button>
+                </div>
+              ))}
             </>
           )}
 
