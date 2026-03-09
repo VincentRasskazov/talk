@@ -1281,7 +1281,10 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers }) {
         </div>
       </div>
     </div>
-  )
+  );
+}
+
+// --- WEBRTC VIDEO ENGINE ---
 
 // --- WEBRTC VIDEO ENGINE ---
 const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
