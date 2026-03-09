@@ -298,7 +298,7 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
           )}
           {isGuest && <button onClick={onLoginClick} style={{width: '100%', padding: 14, background: '#4e5058', color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Log in to interact</button>}
 
-          {canManage && !isSelf && currentServer.owner !== userProfile.uid && userProfile.email !== 'vincentr111222@gmail.com' && (
+          {canManage && !isSelf && currentServer && currentServer.owner !== userProfile.uid && userProfile.email !== 'vincentr111222@gmail.com' && (
              <div style={{display: 'flex', gap: 8, marginTop: 16}}>
                {isServerOwner && <button onClick={toggleAdmin} style={{flex: 1, padding: 10, background: '#35373c', color: '#fff', borderRadius: 6, border: '1px solid #5865F2'}}>{targetIsAdmin ? 'Remove Admin' : 'Make Admin'}</button>}
                <button onClick={banFromServer} style={{flex: 1, padding: 10, background: '#da373c', color: '#fff', borderRadius: 6, border: 'none'}}>Ban from Server</button>
@@ -345,7 +345,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   let servers = [];
   if (allServers) {
     servers = allServers.filter(s => {
-      if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; // Banned filter
+      if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
       if (isAdmin) return true;
       if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
       return false;
@@ -492,7 +492,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null);
-  const [rateLimitTimer, setRateLimitTimer] = useState([]); // advanced local rate limit
+  const [rateLimitTimer, setRateLimitTimer] = useState([]);
 
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
@@ -501,7 +501,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   
   const [lastMsgId, setLastMsgId] = useState(null);
 
-  // Group channels by category
   const categories = {};
   if (channels) {
     channels.forEach(c => {
@@ -511,7 +510,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     });
   }
 
-  // Auto-scroll on new message
   useEffect(() => {
     if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
     
@@ -539,7 +537,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
 
-    // Advanced Rate Limit: Max 4 messages per 5 seconds
     const now = Date.now();
     const recent = rateLimitTimer.filter(t => now - t < 5000);
     if (recent.length >= 4) {
