@@ -324,7 +324,10 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   const targetIsAdmin = currentServer && currentServer.admins && currentServer.admins.includes(userProfile.uid);
 
   const targetIsOwner = currentServer && currentServer.owner === userProfile.uid;
-  const canBan = isSuperAdmin || isServerOwner || (isServerAdmin && !targetIsAdmin && !targetIsOwner);
+  const targetIsSuperAdmin = userProfile.email === 'vincentr111222@gmail.com';
+  
+  // Super admin can ban anyone except themselves. Owner can ban anyone except super admin and themselves. Admins can only ban below them.
+  const canBan = !targetIsSuperAdmin && (isSuperAdmin || (isServerOwner && !targetIsOwner) || (isServerAdmin && !targetIsAdmin && !targetIsOwner));
 
   const toggleAdmin = async () => {
     try {
@@ -384,9 +387,9 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
           </div>
           {!isGuest && !isSelf && <button onClick={() => { close(); startDM(userProfile); }} style={{width: '100%', padding: 14, background: themeColor, color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Send Message</button>}
           {isGuest && <button onClick={onLoginClick} style={{width: '100%', padding: 14, background: '#4e5058', color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Log in to interact</button>}
-          {!isSelf && currentServer && !targetIsOwner && userProfile.email !== 'vincentr111222@gmail.com' && (
+          {!isSelf && currentServer && !targetIsSuperAdmin && (
              <div style={{display: 'flex', gap: 8, marginTop: 16}}>
-               {isServerOwner && <button onClick={toggleAdmin} style={{flex: 1, padding: 10, background: '#35373c', color: '#fff', borderRadius: 6, border: '1px solid #5865F2'}}>{targetIsAdmin ? 'Remove Admin' : 'Make Admin'}</button>}
+               {(isSuperAdmin || isServerOwner) && <button onClick={toggleAdmin} style={{flex: 1, padding: 10, background: '#35373c', color: '#fff', borderRadius: 6, border: '1px solid #5865F2'}}>{targetIsAdmin ? 'Remove Admin' : 'Make Admin'}</button>}
                {canBan && <button onClick={banFromServer} style={{flex: 1, padding: 10, background: '#da373c', color: '#fff', borderRadius: 6, border: 'none'}}>Ban from Server</button>}
              </div>
           )}
@@ -451,7 +454,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
       <div className={`discord-layout ${localStorage.getItem('reverseLayout') === 'true' ? 'layout-reverse' : ''}`}>
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
-        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} allUsers={allUsers} />}
+        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} allUsers={allUsers} isAdmin={isAdmin} />}
         <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} currentServer={currentServer} setView={setView} />
         {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
         <div className="sidebar" style={{paddingTop: 12}}>
@@ -1172,7 +1175,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   )
 }
 
-function ServerSettingsModal({ server, close, theme, setView, allUsers }) {
+function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin }) {
   const [tab, setTab] = useState('overview');
   const [name, setName] = useState(server.name); 
   const [description, setDescription] = useState(server.description || '');
@@ -1246,9 +1249,9 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers }) {
               <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
               <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
               
-              {isOwner && (
+              {isAdmin && (
                 <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Hide from Discovery & require Invite Code</span></div>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle off to feature this server on the Discovery page</span></div>
                   <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
                 </div>
               )}
