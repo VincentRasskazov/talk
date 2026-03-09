@@ -620,21 +620,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if (msgsRef && auth.currentUser) {
       try {
         await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        await firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        await firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
         setForm(''); setFile(null); 
-        
-        // --- TRIGGER BACKGROUND PUSH NOTIFICATION ---
-        if (activeDM.target && activeDM.target.fcmToken) {
-           fetch(`${BACKEND_URL}/notify`, {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({
-               fcmToken: activeDM.target.fcmToken,
-               title: `New DM from ${myData ? myData.displayName : 'User'}`,
-               body: text ? text : (file ? 'Sent an attachment' : 'New message')
-             })
-           }).catch(err => console.warn("Push failed:", err));
-        }
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
@@ -846,6 +834,19 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
         await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         setForm(''); setFile(null); 
         
+        // --- TRIGGER BACKGROUND PUSH NOTIFICATION SAFELY ---
+        if (activeDM && activeDM.target && activeDM.target.fcmToken) {
+           fetch(`${BACKEND_URL}/notify`, {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+               fcmToken: activeDM.target.fcmToken,
+               title: `New DM from ${myData ? myData.displayName : 'User'}`,
+               body: text ? text : (file ? 'Sent an attachment' : 'New message')
+             })
+           }).catch(err => console.warn("Push failed:", err));
+        }
+
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
           const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
