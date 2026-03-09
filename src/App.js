@@ -262,7 +262,7 @@ function AuthScreen({ themeColor, goBack }) {
 }
 
 function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest }) {
-  const publicServers = allServers ? allServers.filter(s => !s.isPrivate) : [];
+  const publicServers = allServers ? allServers.filter(s => s.isDiscoverable) : [];
   const join = async (s) => {
     if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
     if(s.banned && s.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
@@ -422,7 +422,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     servers = allServers.filter(s => {
       if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
       if (isAdmin) return true;
-      if (!s.isPrivate) return true;
+      if (s.isPublic) return true; // Only Admin can make servers auto-appear for everyone
       if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
       return false;
     });
@@ -654,14 +654,15 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
             </header>
             
             {channel.type === 'voice' ? (
-               <div style={{flex: 1, display: 'flex', flexDirection: 'column', background: '#000'}}>
-                 <iframe title="Voice and Video" allow="camera; microphone; fullscreen; display-capture" src={`https://meet.jit.si/talk_app_server_${server.id}_channel_${channel.id}`} style={{width: '100%', height: '100%', border: 'none'}} />
+               <div style={{flex: 1, display: 'flex', flexDirection: 'column', background: '#000', position: 'relative'}}>
+                 <div style={{padding: 16, background: '#2b2d31', color: '#dbdee1', textAlign: 'center'}}>Native Server Voice Channel (Beta)</div>
+                 <VideoCallRoom dmId={`server_${server.id}_${channel.id}`} isCaller={true} closeCall={() => setChannel(channels.find(c => c.type==='text') || null)} myName={myData ? myData.displayName : 'User'} otherName={`#${channel.name}`} targetUid="server_room" />
                </div>
             ) : (
               <>
                 <main>
                   {messages && messages.map((m) => (
-                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins || []} />
+                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins || []} />
                   ))}
                   <span ref={dummy}></span>
                 </main>
@@ -711,6 +712,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [mentionQuery, setMentionQuery] = useState(null); const [rateLimitTimer, setRateLimitTimer] = useState([]);
+  const [inCall, setInCall] = useState(false);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
 
@@ -815,7 +817,11 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
                 <div className="header-title">@{activeDM.target.displayName}</div>
               </div>
+              <button onClick={() => setInCall(true)} style={{background: 'none', color: '#23a559', fontSize: 20}}>📞</button>
             </header>
+            
+            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={true} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
+            
             <main>
               {messages && messages.map((m) => (
                  <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} />
@@ -847,8 +853,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner, serverAdmins }) {
-  const [isEditing, setIsEditing] = useState(false);
+function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner, serverAdmins }) {  const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
 
   const saveEdit = async (e) => {
@@ -1189,7 +1194,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const [description, setDescription] = useState(server.description || '');
   const [icon, setIcon] = useState(server.icon || '');
   const [bannerURL, setBannerURL] = useState(server.bannerURL || '');
-  const [isPrivate, setPrivate] = useState(server.isPrivate !== undefined ? server.isPrivate : true);
+  const [isPublic, setIsPublic] = useState(server.isPublic || false);
   const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
   const [roles, setRoles] = useState(server.roles || []);
@@ -1285,11 +1290,21 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
               </div>
 
               {roles.map((r, i) => (
-                <div key={r.id} style={{display: 'flex', gap: 12, background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, alignItems: 'center', border: '1px solid #1e1f22'}}>
-                  <div style={{width: 24, height: 24, borderRadius: '50%', background: r.color, flexShrink: 0}}></div>
-                  <input value={r.name} onChange={(e) => { const newRoles = [...roles]; newRoles[i].name = e.target.value; setRoles(newRoles); }} style={{margin: 0, padding: 8}} placeholder="Role Name" />
-                  <input type="color" value={r.color} onChange={(e) => { const newRoles = [...roles]; newRoles[i].color = e.target.value; setRoles(newRoles); }} style={{width: 40, height: 36, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer'}} />
-                  <button onClick={() => setRoles(roles.filter(role => role.id !== r.id))} style={{background: '#da373c', color: '#fff', padding: '8px', fontSize: 12}}>DEL</button>
+                <div key={r.id} style={{display: 'flex', flexDirection: 'column', gap: 8, background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, border: '1px solid #1e1f22'}}>
+                  <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+                    <div style={{width: 24, height: 24, borderRadius: '50%', background: r.color, flexShrink: 0}}></div>
+                    <input value={r.name} onChange={(e) => { const newRoles = [...roles]; newRoles[i].name = e.target.value; setRoles(newRoles); }} style={{margin: 0, padding: 8}} placeholder="Role Name" />
+                    <input type="color" value={r.color} onChange={(e) => { const newRoles = [...roles]; newRoles[i].color = e.target.value; setRoles(newRoles); }} style={{width: 40, height: 36, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer'}} />
+                    <button onClick={() => setRoles(roles.filter(role => role.id !== r.id))} style={{background: '#da373c', color: '#fff', padding: '8px', fontSize: 12}}>DEL</button>
+                  </div>
+                  <div style={{display: 'flex', gap: 16, fontSize: 13, color: '#b5bac1', marginTop: 4}}>
+                    <label style={{display: 'flex', alignItems: 'center', gap: 6, margin: 0, textTransform: 'none', fontWeight: 'normal'}}>
+                      <input type="checkbox" checked={r.perms && r.perms.delMsg} onChange={(e) => { const newRoles = [...roles]; if(!newRoles[i].perms) newRoles[i].perms={}; newRoles[i].perms.delMsg = e.target.checked; setRoles(newRoles); }} style={{width: 16, height: 16, margin: 0}} /> Can Delete Messages
+                    </label>
+                    <label style={{display: 'flex', alignItems: 'center', gap: 6, margin: 0, textTransform: 'none', fontWeight: 'normal'}}>
+                      <input type="checkbox" checked={r.perms && r.perms.kick} onChange={(e) => { const newRoles = [...roles]; if(!newRoles[i].perms) newRoles[i].perms={}; newRoles[i].perms.kick = e.target.checked; setRoles(newRoles); }} style={{width: 16, height: 16, margin: 0}} /> Can Kick Users
+                    </label>
+                  </div>
                 </div>
               ))}
             </>
