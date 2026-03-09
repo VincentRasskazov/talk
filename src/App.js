@@ -262,7 +262,7 @@ function AuthScreen({ themeColor, goBack }) {
 }
 
 function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest }) {
-  const publicServers = allServers ? allServers.filter(s => !s.isPrivate && s.isDiscoverable) : [];
+  const publicServers = allServers ? allServers.filter(s => !s.isPrivate) : [];
   const join = async (s) => {
     if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
     if(s.banned && s.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
@@ -1232,9 +1232,9 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
       <div className="modal-box" style={{width: 550, padding: 0, overflow: 'hidden'}}>
         <div style={{display: 'flex', background: '#2b2d31', borderBottom: '1px solid #1e1f22'}}>
           <button onClick={() => setTab('overview')} style={{flex: 1, padding: 16, background: tab === 'overview' ? '#35373c' : 'transparent', color: tab === 'overview' ? '#fff' : '#b5bac1', borderRadius: 0}}>Overview</button>
-          {isOwner && <button onClick={() => setTab('roles')} style={{flex: 1, padding: 16, background: tab === 'roles' ? '#35373c' : 'transparent', color: tab === 'roles' ? '#fff' : '#b5bac1', borderRadius: 0}}>Roles</button>}
+          {(isOwner || isAdmin) && <button onClick={() => setTab('roles')} style={{flex: 1, padding: 16, background: tab === 'roles' ? '#35373c' : 'transparent', color: tab === 'roles' ? '#fff' : '#b5bac1', borderRadius: 0}}>Roles</button>}
           <button onClick={() => setTab('moderation')} style={{flex: 1, padding: 16, background: tab === 'moderation' ? '#35373c' : 'transparent', color: tab === 'moderation' ? '#fff' : '#b5bac1', borderRadius: 0}}>Moderation</button>
-          {isOwner && <button onClick={() => setTab('danger')} style={{flex: 1, padding: 16, background: tab === 'danger' ? '#da373c' : 'transparent', color: tab === 'danger' ? '#fff' : '#b5bac1', borderRadius: 0}}>Danger Zone</button>}
+          {(isOwner || isAdmin) && <button onClick={() => setTab('danger')} style={{flex: 1, padding: 16, background: tab === 'danger' ? '#da373c' : 'transparent', color: tab === 'danger' ? '#fff' : '#b5bac1', borderRadius: 0}}>Danger Zone</button>}
         </div>
         
         <div style={{padding: 24, maxHeight: '70vh', overflowY: 'auto'}}>
@@ -1260,20 +1260,13 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
               <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
               <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
               
-              {isOwner && (
+              {(isOwner || isAdmin) && (
                 <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server (if Admin approves)</span></div>
-                  <div onClick={()=>setIsDiscoverable(!isDiscoverable)} style={{width:40,height:24,background:isDiscoverable?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isDiscoverable?19:3,transition:'0.3s'}}/></div>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery (Make Public)</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find and join this server without an invite</span></div>
+                  <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:!isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:!isPrivate?19:3,transition:'0.3s'}}/></div>
                 </div>
               )}
-
-              {isAdmin && (
-                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
-                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Private Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle off to make this server public</span></div>
-                  <div onClick={()=>setPrivate(!isPrivate)} style={{width:40,height:24,background:isPrivate?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPrivate?19:3,transition:'0.3s'}}/></div>
-                </div>
-              )}
-              {isPrivate && isOwner && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+              {isPrivate && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
               
               <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
                 <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
@@ -1282,7 +1275,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
             </>
           )}
 
-          {tab === 'roles' && isOwner && (
+          {tab === 'roles' && (isOwner || isAdmin) && (
             <>
               <h3 style={{color: '#fff', marginTop: 0}}>Custom Roles</h3>
               <p style={{color: '#949ba4', fontSize: 13}}>Create custom roles with specific colors.</p>
