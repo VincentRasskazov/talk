@@ -1498,15 +1498,29 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
                         const swPath = window.location.pathname.includes('/talk') ? '/talk/firebase-messaging-sw.js' : '/firebase-messaging-sw.js';
-                        await navigator.serviceWorker.register(swPath);
+                        const swScope = window.location.pathname.includes('/talk') ? '/talk/' : '/';
                         
-                        // Force the app to wait until the service worker is fully active
-                        const registration = await navigator.serviceWorker.ready;
+                        const registration = await navigator.serviceWorker.register(swPath, { scope: swScope });
+                        
+                        // Bulletproof: Force the browser to wait until the worker is explicitly "activated"
+                        if (!registration.active) {
+                          const worker = registration.installing || registration.waiting;
+                          if (worker) {
+                            await new Promise((resolve) => {
+                              worker.addEventListener('statechange', (e) => {
+                                if (e.target && e.target.state === 'activated') resolve();
+                              });
+                            });
+                          }
+                        }
+                        
+                        // Double check it's ready for the current scope
+                        const readyReg = await navigator.serviceWorker.ready;
                         
                         const messaging = firebase.messaging();
                         const token = await messaging.getToken({ 
                           vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0',
-                          serviceWorkerRegistration: registration 
+                          serviceWorkerRegistration: readyReg 
                         });
                         
                         if (token && auth.currentUser) {
