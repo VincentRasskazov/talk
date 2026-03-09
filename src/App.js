@@ -7,6 +7,8 @@ import 'firebase/messaging';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useDocumentData } from 'react-firebase-hooks/firestore';
 
+console.log("%c🚀 DEPLOY CHECK: Version 1.0.2 (Verified Update)", "color: #00ff00; font-weight: bold; background: #000; padding: 5px;");
+
 const buildDate = process.env.REACT_APP_BUILD_DATE || "Local Dev Mode";
 console.log(`%c🚀 TALK POLISH UPDATE \n📅 Built on: ${buildDate}`, "color: #5865F2; font-size: 14px; font-weight: bold; border: 2px solid #5865F2; padding: 10px; border-radius: 8px;");
 
