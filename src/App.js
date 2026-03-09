@@ -333,8 +333,16 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
     try {
       if(targetIsAdmin) await firestore.collection('servers').doc(currentServer.id).update({ admins: firebase.firestore.FieldValue.arrayRemove(userProfile.uid) });
       else await firestore.collection('servers').doc(currentServer.id).update({ admins: firebase.firestore.FieldValue.arrayUnion(userProfile.uid) });
-      alert("Roles updated!");
+      alert("Admin status updated!");
     } catch(e) { alert(e.message); }
+  };
+
+  const toggleRole = async (roleId) => {
+    try {
+      const currentRoles = (currentServer.userRoles && currentServer.userRoles[userProfile.uid]) || [];
+      const newRoles = currentRoles.includes(roleId) ? currentRoles.filter(id => id !== roleId) : [...currentRoles, roleId];
+      await firestore.collection('servers').doc(currentServer.id).update({ [`userRoles.${userProfile.uid}`]: newRoles });
+    } catch(e) { alert("Failed to assign role."); }
   };
 
   const banFromServer = async () => {
@@ -376,9 +384,26 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
               <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
                 {targetIsOwner && <div style={{background: '#f0b232', color: '#000', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Owner</div>}
                 {targetIsAdmin && <div style={{background: '#5865F2', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Admin</div>}
-                {!targetIsOwner && !targetIsAdmin && <div style={{background: '#4e5058', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Everyone</div>}
+                {currentServer.roles && currentServer.roles.map(r => {
+                  const hasRole = currentServer.userRoles && currentServer.userRoles[userProfile.uid] && currentServer.userRoles[userProfile.uid].includes(r.id);
+                  if (hasRole) return <div key={r.id} style={{background: r.color, color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.8)'}}>{r.name}</div>;
+                  return null;
+                })}
+                {!targetIsOwner && !targetIsAdmin && (!currentServer.userRoles || !currentServer.userRoles[userProfile.uid] || currentServer.userRoles[userProfile.uid].length === 0) && <div style={{background: '#4e5058', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>Everyone</div>}
               </div>
             </div>
+          )}
+
+          {canManage && currentServer && currentServer.roles && currentServer.roles.length > 0 && (
+             <div style={{marginTop: 16, background: '#2b2d31', padding: 12, borderRadius: 8, border: '1px dashed #3f4147'}}>
+               <h4 style={{margin: '0 0 8px 0', color: '#b5bac1', fontSize: 11, textTransform: 'uppercase'}}>Assign Roles</h4>
+               <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                 {currentServer.roles.map(r => {
+                   const hasRole = currentServer.userRoles && currentServer.userRoles[userProfile.uid] && currentServer.userRoles[userProfile.uid].includes(r.id);
+                   return <button key={r.id} onClick={() => toggleRole(r.id)} style={{background: hasRole ? r.color : 'transparent', color: hasRole ? '#fff' : r.color, border: `1px solid ${r.color}`, padding: '4px 8px', fontSize: '11px', borderRadius: '4px', cursor: 'pointer'}}>{r.name} {hasRole ? '✓' : '+'}</button>;
+                 })}
+               </div>
+             </div>
           )}
 
           <div style={{background: '#1e1f22', padding: 16, borderRadius: 8, marginTop: 16, border: '1px solid rgba(255,255,255,0.05)'}}>
@@ -415,6 +440,12 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
   const [allDMs, dmsLoading, dmsError] = useCollectionData(dmsQuery, { idField: 'id' });
+  
+  const callsQuery = !isGuest && auth.currentUser ? firestore.collection('calls').where('targetUid', '==', auth.currentUser.uid).where('status', '==', 'ringing') : null;
+  const [incomingCalls] = useCollectionData(callsQuery, { idField: 'id' });
+  const activeIncomingCall = incomingCalls && incomingCalls.length > 0 ? incomingCalls[0] : null;
+  const [activeGlobalCall, setActiveGlobalCall] = useState(null);
+
   const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
 
   let servers = [];
@@ -452,6 +483,18 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   return (
     <>
       {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
+      
+      {activeIncomingCall && !activeGlobalCall && (
+        <div className="incoming-call-banner" style={{position: 'absolute', top: 20, right: 20, zIndex: 9999, background: '#23a559', color: 'white', padding: 16, borderRadius: 8, display: 'flex', gap: 16, alignItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.5)'}}>
+          <div><strong style={{fontSize: 16}}>📞 Incoming Call</strong><br/><span style={{fontSize: 13}}>From: {activeIncomingCall.callerName}</span></div>
+          <div style={{display: 'flex', gap: 8}}>
+            <button onClick={() => { setView('dms'); setActiveGlobalCall(activeIncomingCall); }} style={{background: '#fff', color: '#23a559', padding: '8px 16px'}}>Accept</button>
+            <button onClick={() => firestore.collection('calls').doc(activeIncomingCall.id).update({status: 'ended'})} style={{background: '#da373c', color: '#fff', padding: '8px 16px'}}>Decline</button>
+          </div>
+        </div>
+      )}
+      {activeGlobalCall && <VideoCallRoom dmId={activeGlobalCall.id} isCaller={false} closeCall={() => setActiveGlobalCall(null)} myName={currentUserData ? currentUserData.displayName : 'User'} otherName={activeGlobalCall.callerName} targetUid={auth.currentUser.uid} />}
+
       <div className={`discord-layout ${localStorage.getItem('reverseLayout') === 'true' ? 'layout-reverse' : ''}`}>
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
         {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} allUsers={allUsers} isAdmin={isAdmin} />}
@@ -662,7 +705,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <>
                 <main>
                   {messages && messages.map((m) => (
-                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins || []} />
+                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} />
                   ))}
                   <span ref={dummy}></span>
                 </main>
@@ -853,8 +896,20 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, serverOwner, serverAdmins }) {  const [isEditing, setIsEditing] = useState(false);
+function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer }) {
+  const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
+  
+  const serverOwner = currentServer ? currentServer.owner : null;
+  const serverAdmins = currentServer ? currentServer.admins || [] : [];
+  
+  let roleColor = '#f2f3f5';
+  if (currentServer && currentServer.userRoles && currentServer.userRoles[msg.uid] && currentServer.roles) {
+    const userRoleIds = currentServer.userRoles[msg.uid];
+    const topRole = currentServer.roles.find(r => userRoleIds.includes(r.id));
+    if (topRole) roleColor = topRole.color;
+  }
+  if (serverOwner === msg.uid) roleColor = '#f0b232';
 
   const saveEdit = async (e) => {
     e.preventDefault();
@@ -898,7 +953,7 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
       <img className="message-avatar" src={msg.photoURL || DEFAULT_AVATAR} alt="user" onClick={openProfile} />
       <div className="message-content">
         <div className="msg-author-row">
-          <span className="msg-author" onClick={openProfile}>{msg.displayName}</span>
+          <span className="msg-author" onClick={openProfile} style={{color: roleColor}}>{msg.displayName}</span>
           {serverOwner && msg.uid === serverOwner && <span style={{background: '#f0b232', color: '#1e1f22', fontSize: '10px', padding: '2px 4px', borderRadius: '4px', marginLeft: '6px', fontWeight: 'bold'}}>OWNER</span>}
           <span className="msg-timestamp">{formatTimestamp(msg.createdAt)}{msg && msg.isEdited ? ' (edited)' : ''}</span>
       </div>
@@ -1265,8 +1320,9 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
               <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
               <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
               
-              {isOwner && (
+              {(isOwner || isAdmin) && (
                 <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server via Discovery</span></div>
                   <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server via Discovery</span></div>
                   <div onClick={()=>setIsDiscoverable(!isDiscoverable)} style={{width:40,height:24,background:isDiscoverable?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isDiscoverable?19:3,transition:'0.3s'}}/></div>
                 </div>
