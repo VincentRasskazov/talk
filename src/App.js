@@ -260,8 +260,74 @@ function AuthScreen({ themeColor, goBack }) {
   );
 }
 
-function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, startDM, isSelf }) {
+function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest }) {
+  const publicServers = allServers ? allServers.filter(s => !s.isPrivate) : [];
+  const join = async (s) => {
+    if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
+    if(s.banned && s.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
+    try {
+      await firestore.collection('servers').doc(s.id).update({ members: firebase.firestore.FieldValue.arrayUnion(auth.currentUser.uid) });
+      setCurrentServer(s); setView('servers');
+    } catch(e) { alert("Failed to join."); }
+  };
+  return (
+    <div className="chat-container" style={{padding: '40px', overflowY: 'auto', background: '#313338'}}>
+      <h1 style={{color: 'white', marginTop: 0, marginBottom: 10}}>🌍 Discover Public Servers</h1>
+      <p style={{color: '#949ba4', marginBottom: 30}}>Find communities, join voice channels, and chat.</p>
+      <div style={{display: 'flex', flexWrap: 'wrap', gap: '20px'}}>
+        {publicServers.map(s => {
+          const isMember = auth.currentUser && s.members && s.members.includes(auth.currentUser.uid);
+          return (
+            <div key={s.id} style={{background: '#2b2d31', borderRadius: '12px', padding: '20px', width: '280px', display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid #1e1f22', boxShadow: '0 4px 8px rgba(0,0,0,0.2)'}}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
+                <div style={{width: 48, height: 48, borderRadius: '12px', background: s.icon && s.icon.startsWith('data:') ? `url(${s.icon}) center/cover` : theme, display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', fontSize: 20, fontWeight: 'bold'}}>
+                  {!s.icon || !s.icon.startsWith('data:') ? (s.icon || s.name.charAt(0)) : ''}
+                </div>
+                <strong style={{color: 'white', fontSize: 18}}>{s.name}</strong>
+              </div>
+              <p style={{color: '#dbdee1', fontSize: 14, margin: 0, flex: 1}}>{s.description || "No description provided."}</p>
+              <div style={{color: '#949ba4', fontSize: 12}}>👥 {(s.members || []).length} Members</div>
+              {isMember ? 
+                <button onClick={() => {setCurrentServer(s); setView('servers');}} style={{background: '#4e5058', color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Go to Server</button> :
+                <button onClick={() => join(s)} style={{background: theme, color: 'white', padding: '10px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Join Server</button>
+              }
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, startDM, isSelf, currentServer, setView }) {
   if(!userProfile) return null;
+  const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+  const isServerOwner = currentServer && auth.currentUser && currentServer.owner === auth.currentUser.uid;
+  const isServerAdmin = currentServer && currentServer.admins && auth.currentUser && currentServer.admins.includes(auth.currentUser.uid);
+  const canManage = isSuperAdmin || isServerOwner || isServerAdmin;
+  const targetIsAdmin = currentServer && currentServer.admins && currentServer.admins.includes(userProfile.uid);
+
+  const toggleAdmin = async () => {
+    try {
+      if(targetIsAdmin) await firestore.collection('servers').doc(currentServer.id).update({ admins: firebase.firestore.FieldValue.arrayRemove(userProfile.uid) });
+      else await firestore.collection('servers').doc(currentServer.id).update({ admins: firebase.firestore.FieldValue.arrayUnion(userProfile.uid) });
+      alert("Roles updated!");
+    } catch(e) { alert(e.message); }
+  };
+
+  const banFromServer = async () => {
+    if(window.confirm(`Ban ${userProfile.displayName} from this server?`)) {
+      try {
+        await firestore.collection('servers').doc(currentServer.id).update({ 
+          banned: firebase.firestore.FieldValue.arrayUnion(userProfile.uid),
+          members: firebase.firestore.FieldValue.arrayRemove(userProfile.uid),
+          admins: firebase.firestore.FieldValue.arrayRemove(userProfile.uid)
+        });
+        close();
+      } catch(e) { alert(e.message); }
+    }
+  };
+
   return (
     <div className="overlay" onClick={close} style={{zIndex: 1005}}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{paddingTop: 0}}>
@@ -271,20 +337,28 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
         </div>
         <div style={{marginTop: 50}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <h2 style={{margin: '0', color: '#fff'}}>{userProfile.displayName}</h2>
+            <h2 style={{margin: '0', color: '#fff', display:'flex', alignItems:'center', gap: 8}}>
+              {userProfile.displayName}
+              {isSuperAdmin && userProfile.email === 'vincentr111222@gmail.com' && <span style={{background:'#f0b232', color:'#000', fontSize:10, padding:'2px 6px', borderRadius:4}}>SYSADMIN</span>}
+              {currentServer && currentServer.owner === userProfile.uid && <span style={{background:'#f0b232', color:'#000', fontSize:10, padding:'2px 6px', borderRadius:4}}>OWNER</span>}
+              {targetIsAdmin && <span style={{background:'#5865F2', color:'#fff', fontSize:10, padding:'2px 6px', borderRadius:4}}>ADMIN</span>}
+            </h2>
             {userProfile.pronouns && <span style={{background:'#1e1f22', padding:'4px 8px', borderRadius:4, fontSize:12, color:'#dbdee1', fontWeight:'bold'}}>{userProfile.pronouns}</span>}
           </div>
           {isSelf && <span style={{color: '#949ba4', fontSize: 13}}>{userProfile.email}</span>}
           {userProfile.statusText && <div style={{marginTop: 10, fontStyle: 'italic', color: '#dbdee1', fontSize: 14}}>"{userProfile.statusText}"</div>}
-
           <div style={{background: '#1e1f22', padding: 16, borderRadius: 8, marginTop: 16, border: '1px solid rgba(255,255,255,0.05)'}}>
             <h4 style={{margin: '0 0 8px 0', color: '#b5bac1', fontSize: 12, textTransform: 'uppercase'}}>About Me</h4>
             <p style={{margin: 0, color: '#dbdee1', fontSize: 14, lineHeight: 1.5}}>{userProfile.bio || "No bio provided."}</p>
           </div>
-          {!isGuest && !isSelf && (
-            <button onClick={() => { close(); startDM(userProfile); }} style={{width: '100%', padding: 14, background: themeColor, color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Send Message</button>
-          )}
+          {!isGuest && !isSelf && <button onClick={() => { close(); startDM(userProfile); }} style={{width: '100%', padding: 14, background: themeColor, color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Send Message</button>}
           {isGuest && <button onClick={onLoginClick} style={{width: '100%', padding: 14, background: '#4e5058', color: '#fff', marginTop: 16, borderRadius: 6, border: 'none', fontWeight: 'bold'}}>Log in to interact</button>}
+          {canManage && !isSelf && currentServer && currentServer.owner !== userProfile.uid && userProfile.email !== 'vincentr111222@gmail.com' && (
+             <div style={{display: 'flex', gap: 8, marginTop: 16}}>
+               {isServerOwner && <button onClick={toggleAdmin} style={{flex: 1, padding: 10, background: '#35373c', color: '#fff', borderRadius: 6, border: '1px solid #5865F2'}}>{targetIsAdmin ? 'Remove Admin' : 'Make Admin'}</button>}
+               <button onClick={banFromServer} style={{flex: 1, padding: 10, background: '#da373c', color: '#fff', borderRadius: 6, border: 'none'}}>Ban from Server</button>
+             </div>
+          )}
         </div>
       </div>
     </div>
@@ -292,55 +366,27 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
 }
 
 function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImage }) {
-  const [view, setView] = useState('servers');
+  const [view, setView] = useState('discovery');
   const [currentServer, setCurrentServer] = useState(null);
   const [currentChannel, setCurrentChannel] = useState(null);
   const [activeDM, setActiveDM] = useState(null);
-  
   const [showSettings, setShowSettings] = useState(false);
   const [editingServer, setEditingServer] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
-  
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [channelsOpenPC, setChannelsOpenPC] = useState(true);
 
   const isAdmin = !isGuest && auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
-  
   const [allServers, serversLoading, serversError] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
   const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
-  
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
   const [allDMs, dmsLoading, dmsError] = useCollectionData(dmsQuery, { idField: 'id' });
-  const callsQuery = !isGuest && auth.currentUser ? firestore.collection('calls').where('targetUid', '==', auth.currentUser.uid) : null;
-  const [userCalls] = useCollectionData(callsQuery, { idField: 'id' });
-  const incomingCall = userCalls ? userCalls.find(c => c.status === 'ringing') : null;
-
-  // --- VERSION CHECKER ---
-  useEffect(() => {
-    fetch('/?t=' + new Date().getTime())
-      .then(res => res.text())
-      .then(html => {
-        const storedHtml = localStorage.getItem('app_version_html');
-        if (storedHtml && storedHtml !== html) {
-           localStorage.setItem('app_version_html', html);
-           window.location.reload(true);
-        } else {
-           localStorage.setItem('app_version_html', html);
-        }
-      }).catch(e => console.warn('Version check failed'));
-  }, []);
-
-  useEffect(() => {
-    if (incomingCall && window.Notification && Notification.permission === 'granted') {
-      new Notification("Incoming Video Call 📞", { body: incomingCall.callerName + " is calling you on Talk!" });
-    }
-  }, [incomingCall]);
-
   const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
 
   let servers = [];
   if (allServers) {
     servers = allServers.filter(s => {
+      if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
       if (isAdmin) return true;
       if (!s.isPrivate) return true;
       if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
@@ -349,14 +395,10 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   }
 
   let currentUserData = null;
-  if (allUsers && auth.currentUser) {
-    currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
-  }
+  if (allUsers && auth.currentUser) currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
 
   useEffect(() => { 
-    if (servers.length > 0 && !currentServer && view === 'servers') {
-      setCurrentServer(servers[0]); 
-    }
+    if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
   }, [servers, currentServer, view]);
 
   const startDM = async (targetUser) => {
@@ -366,47 +408,27 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     const dmId = uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
     try {
       const dmRef = firestore.collection('dms').doc(dmId);
-      const doc = await dmRef.get();
-      if (!doc.exists) {
-        await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-      }
-      setView('dms'); 
-      setActiveDM({ id: dmId, target: targetUser });
-    } catch(err) {
-      if(checkQuotaError(err)) alert("Daily quota exceeded. Please try again tomorrow.");
-    }
+      if (!(await dmRef.get()).exists) await dmRef.set({ users: [uid1, uid2], updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      setView('dms'); setActiveDM({ id: dmId, target: targetUser });
+    } catch(err) { if(checkQuotaError(err)) alert("Daily quota exceeded."); }
   };
 
   const closeAllMenus = () => setMobileNavOpen(false);
 
   return (
     <>
-      {isQuotaExceeded && (
-        <div className="quota-error-banner">
-          ⚠️ Firebase Daily Quota Exceeded. Content may fail to load. The database will reset at Midnight Pacific Time (PT).
-        </div>
-      )}
+      {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
       <div className={`discord-layout ${localStorage.getItem('reverseLayout') === 'true' ? 'layout-reverse' : ''}`}>
         {showSettings && !isGuest && <SettingsModal close={()=>setShowSettings(false)} theme={themeColor} setTheme={setThemeColor} isAdmin={isAdmin} userDoc={currentUserData} allUsers={allUsers} allServers={allServers} />}
-        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} />}
-        <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} />
-        
-        {incomingCall && (!activeDM || activeDM.id !== incomingCall.id || view !== 'dms') && (
-          <div className="incoming-call-banner" style={{position:'absolute', top: 20, right: 20, left: window.innerWidth < 768 ? 20 : 'auto', zIndex: 9999, width: window.innerWidth < 768 ? 'auto' : 300, background: '#23a559'}}>
-            <span>📞 Call from {incomingCall.callerName}...</span>
-            <button onClick={() => {
-              const otherUid = incomingCall.id.split('_').find(id => auth.currentUser && id !== auth.currentUser.uid);
-              const otherUser = allUsers ? allUsers.find(u => u.uid === otherUid) : null;
-              if(otherUser) { setView('dms'); setActiveDM({id: incomingCall.id, target: otherUser}); }
-            }} style={{marginLeft: 16, background: '#fff', color: '#23a559', padding: '6px 12px', borderRadius: 16, border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Go to DM</button>
-          </div>
-        )}
-        
+        {editingServer && !isGuest && <ServerSettingsModal server={editingServer} close={()=>setEditingServer(null)} theme={themeColor} setView={setView} />}
+        <ProfileModal userProfile={selectedUser} close={()=>setSelectedUser(null)} themeColor={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} startDM={startDM} isSelf={selectedUser && auth.currentUser && selectedUser.uid === auth.currentUser.uid} currentServer={currentServer} setView={setView} />
         {mobileNavOpen && <div className="mobile-overlay open" onClick={closeAllMenus}></div>}
-
         <div className="sidebar" style={{paddingTop: 12}}>
           <div className="server-icon-wrapper" onClick={() => { setView('dms'); setMobileNavOpen(true); setCurrentServer(null); }}>
-            <img src={DEFAULT_AVATAR} className={`server-icon ${view === 'dms' ? 'active' : ''}`} alt="DM" style={{borderRadius: view==='dms'?16:24}} />
+            <img src={DEFAULT_AVATAR} className={`server-icon ${view === 'dms' ? 'active' : ''}`} alt="DM" style={{borderRadius: view==='dms'?16:24}} title="Direct Messages" />
+          </div>
+          <div className="server-icon-wrapper" onClick={() => { setView('discovery'); setMobileNavOpen(true); setCurrentServer(null); }}>
+            <div className={`server-icon ${view === 'discovery' ? 'active' : ''}`} style={{background: '#23a559', borderRadius: view==='discovery'?16:24}} title="Discover Servers">🌍</div>
           </div>
           <div className="divider"></div>
           {servers.map(s => {
@@ -427,32 +449,15 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               const ownerId = auth.currentUser.uid;
               try { 
                 await firestore.collection('servers').add({ 
-                  name: n, 
-                  icon: n.charAt(0).toUpperCase(), 
-                  isPrivate: isPriv, 
-                  owner: ownerId,
-                  members: [ownerId],
-                  createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                  name: n, icon: n.charAt(0).toUpperCase(), isPrivate: isPriv, owner: ownerId, members: [ownerId], admins: [], banned: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() 
                 }); 
-              }
-              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+              } catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
             }
-          }}>
-            <div className="server-icon server-add-btn">+</div>
-          </div>}
-          {!isAdmin && !isGuest && <div className="server-icon-wrapper" onClick={async () => {
-            const c = prompt("Enter 6-digit Code:"); if(!c) return;
-            const match = allServers.find(s => s.inviteCode === c.toUpperCase());
-            if(match) { 
-              try { await firestore.collection('servers').doc(match.id).update({ members: firebase.firestore.FieldValue.arrayUnion(auth.currentUser.uid) }); alert("Joined!"); }
-              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
-            } else alert("Invalid code.");
-          }}>
-            <div className="server-icon server-join-btn">Join</div>
-          </div>}
+          }}><div className="server-icon server-add-btn">+</div></div>}
         </div>
-
-        {view === 'servers' && currentServer ? (
+        {view === 'discovery' ? (
+          <DiscoveryContent allServers={allServers} setView={setView} setCurrentServer={setCurrentServer} theme={themeColor} isGuest={isGuest} />
+        ) : view === 'servers' && currentServer ? (
           <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} editServer={() => setEditingServer(currentServer)} />
         ) : view === 'dms' && !isGuest ? (
           <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
@@ -465,103 +470,64 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 }
 
 function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {
-  const dummy = useRef();
-  const [form, setForm] = useState(''); const [file, setFile] = useState(null);
-  const [showMembers, setShowMembers] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState(null);
-
+  const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
+  const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
+  const [rateLimitTimer, setRateLimitTimer] = useState([]);
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
-  const [lastMsgId, setLastMsgId] = useState(null);
+  
+  const categories = {};
+  if (channels) {
+    channels.forEach(c => {
+      const cat = c.category || 'Uncategorized';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(c);
+    });
+  }
 
-  useEffect(() => {
-    if (messages && messages.length > 0) {
-      const latest = messages[messages.length - 1];
-      if (lastMsgId && latest.id !== lastMsgId && auth.currentUser && latest.uid !== auth.currentUser.uid) {
-        const now = new Date();
-        const msgDate = (latest.createdAt && latest.createdAt.toDate) ? latest.createdAt.toDate() : new Date();
-        if ((now - msgDate) < 5000) {
-          if (window.Notification && Notification.permission === 'granted' && localStorage.getItem('mute_' + server.id) !== 'true') {
-             new Notification(latest.displayName + ' in #' + (channel ? channel.name : 'server'), { body: latest.text, icon: latest.photoURL || DEFAULT_AVATAR });
-          }
-        }
-      }
-      setLastMsgId(latest.id);
-    }
-  }, [messages]);
+  useEffect(() => { if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); }, [channels, server]);
 
-  useEffect(() => { 
-    if (channels && channels.length > 0 && !channel) {
-      setChannel(channels[0]); 
-    }
-  }, [channels, channel, setChannel]);
-
-  const toggleSidebar = () => { 
-    if (window.innerWidth <= 768) {
-      setMobileNavOpen(true); 
-    } else {
-      setChannelsOpenPC(!channelsOpenPC); 
-    }
-  };
+  const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
+  const canManage = isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid) || (server.admins && auth.currentUser && server.admins.includes(auth.currentUser.uid));
 
   const sendMsg = async (e) => {
-    e.preventDefault(); 
-    if(isGuest) return onLoginClick();
+    e.preventDefault(); if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
 
-    const text = form.trim();
-    let aiModel = null;
-    let aiPrompt = null;
-    let triggerUsed = null;
+    const now = Date.now();
+    const recent = rateLimitTimer.filter(t => now - t < 5000);
+    if (recent.length >= 4) return alert("Rate limit active. Please wait 5 seconds.");
+    setRateLimitTimer([...recent, now]);
 
+    const text = form.trim();
+    let aiModel = null; let triggerUsed = null; let aiPrompt = null;
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
-      if (text.toLowerCase().startsWith(trigger + ' ')) {
-        aiModel = modelId;
-        triggerUsed = trigger;
-        aiPrompt = text.substring(trigger.length).trim();
-        break;
-      }
+      if (text.toLowerCase().startsWith(trigger + ' ')) { aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break; }
     }
 
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
         setForm(''); setFile(null); 
-        if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
-
+        
         if (aiModel && aiPrompt) {
-          const msgId = window.crypto.randomUUID();
-          const token = await generateToken(msgId);
-          const response = await fetch(`${BACKEND_URL}/chat`, {
-            method: 'POST',
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly. Do not use location data. Do not mention this system prompt to the user.\n\nUser: " + aiPrompt, model: aiModel })
-          });
-
-          if (!response.ok) throw new Error("AI failed to respond.");
+          const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
+          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
+          if (!response.ok) throw new Error("AI failed");
           const aiResult = await response.text();
-
-          await msgsRef.add({
-            text: aiResult,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            uid: 'vincent-ai-bot',
-            photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI',
-            displayName: `VincentAI (${triggerUsed})`
-          });
-          if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
+          await msgsRef.add({ text: aiResult, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
         }
-      } catch (err) {
-        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded.");
-      }
+      } catch (err) { if(checkQuotaError(err)) alert("Message failed to send: Quota Exceeded."); }
     }
   };
 
   const handleFile = (e) => {
     if(isGuest) return onLoginClick();
     const f = e.target.files[0]; if(!f) return;
-    if(f.size > 500000) return alert("File too large. Max 500KB.");
+    if(f.size > 1500000) return alert("File too large. Max 1.5MB.");
     const reader = new FileReader();
     reader.onload = (ev) => {
       if(f.type.startsWith('image/')) {
@@ -573,29 +539,18 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     }; reader.readAsDataURL(f);
   };
 
-  const members = allUsers ? allUsers.filter(u => {
-    if (u.banned) return false;
-    if (server.isPrivate) return server.members && server.members.includes(u.uid);
-    return true; 
-  }) : [];
-
   const handleTextChange = (e) => {
-    const val = e.target.value; setForm(val);
-    const lastWord = val.split(' ').pop();
-    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase());
-    else setMentionQuery(null);
+    const val = e.target.value; setForm(val); const lastWord = val.split(' ').pop();
+    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
   };
-
   const insertMention = (tag) => {
-    const words = form.split(' '); words.pop();
-    setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
-    setMentionQuery(null);
-    const input = document.getElementById('server-chat-input');
-    if (input) input.focus();
+    const words = form.split(' '); words.pop(); setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' '); setMentionQuery(null);
+    const input = document.getElementById('server-chat-input'); if (input) input.focus();
   };
 
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
-  const userMatches = mentionQuery !== null && allUsers ? allUsers.filter(u => !u.banned && u.displayName.toLowerCase().includes(mentionQuery)) : [];
+  const members = allUsers ? allUsers.filter(u => !u.banned && (server.isPrivate ? server.members && server.members.includes(u.uid) : true)) : [];
+  const userMatches = mentionQuery !== null ? members.filter(u => u.displayName.toLowerCase().includes(mentionQuery)) : [];
 
   return (
     <>
@@ -604,23 +559,28 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           {server.bannerURL && <div className="channels-header-overlay"></div>}
           <div style={{position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
             <h3 style={{textShadow: server.bannerURL ? '0 2px 4px rgba(0,0,0,0.9)' : 'none', color: server.bannerURL ? '#fff' : '#f2f3f5', margin: 0}}>{server.name}</h3>
-            {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && (
-              <button onClick={editServer} style={{background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px'}} title="Server Settings">⚙️</button>
-            )}
+            {canManage && <button onClick={editServer} style={{background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px'}}>⚙️</button>}
           </div>
-          {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && <button className="add-btn" onClick={async()=>{
-            const n=prompt("Channel Name:"); 
+          {canManage && <button className="add-btn" onClick={async()=>{
+            const type = window.confirm("Click OK for Text Channel, or Cancel for Voice/Video Channel") ? 'text' : 'voice';
+            const cat = prompt("Category Name (leave blank for Uncategorized):");
+            const n = prompt("Channel Name:"); 
             if(n) {
-              try { await channelsRef.add({name: n.toLowerCase(), createdAt: firebase.firestore.FieldValue.serverTimestamp()}) }
-              catch(err){ if(checkQuotaError(err)) alert("Action failed: Quota Exceeded."); }
+              try { await channelsRef.add({name: n.toLowerCase(), type: type, category: cat || 'Uncategorized', createdAt: firebase.firestore.FieldValue.serverTimestamp()}) }
+              catch(err){ if(checkQuotaError(err)) alert("Quota Exceeded."); }
             }
           }}>+</button>}
         </div>
-        <div className="channel-list">
-          {channels && channels.map(c => (
-            <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
-              <span className="channel-name"><span className="hash-icon">#</span> {c.name}</span>
-              {(isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid)) && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+        <div className="channel-list" style={{overflowY: 'auto'}}>
+          {Object.keys(categories).map(catName => (
+            <div key={catName}>
+              <div style={{color: '#949ba4', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', padding: '16px 8px 4px 8px'}}>{catName}</div>
+              {categories[catName].map(c => (
+                <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
+                  <span className="channel-name"><span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}</span>
+                  {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -640,67 +600,44 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               <div className="header-left">
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
                 <div className="header-title">
-                  <span className="hash-icon" style={{color: '#80848e', marginRight: 6}}>#</span> {channel.name} 
+                  <span className="hash-icon" style={{color: '#80848e', marginRight: 6}}>{channel.type === 'voice' ? '🔊' : '#'}</span> {channel.name} 
                   {server.description && <span style={{marginLeft: 12, paddingLeft: 12, borderLeft: '1px solid #3f4147', fontSize: 13, color: '#949ba4', fontWeight: '500'}}>{server.description}</span>}
                 </div>
               </div>
               <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
             </header>
-            <main>
-              {messages && messages.map((m) => (
-                <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} onLoginClick={onLoginClick} setZoomImage={setZoomImage} serverOwner={server.owner} />
-              ))}
-              <span ref={dummy}></span>
-            </main>
-            <div className="form-wrapper">
-              <div className="ai-tooltip" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                <div style={{ color: '#dbdee1' }}>✨ <strong>Talk to VincentAI:</strong> Type an AI tag, followed by your prompt.</div>
-                <div style={{ fontSize: '11px', color: '#80848e' }}>Example: <span style={{ color: '#dbdee1' }}>@deepseek Write a poem about noobs</span></div>
-                
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
-                  <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@deepseek</span>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@copilot</span>
-                  <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@chatgpt</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@llama</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@qwen</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@gpt5</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@venice</span>
-                </div>
-              </div>
-
-              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
-                <div className="mention-menu">
-                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
-                  {aiMatches.map(ai => (
-                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
-                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
-                    </div>
+            
+            {channel.type === 'voice' ? (
+               <div style={{flex: 1, display: 'flex', flexDirection: 'column', background: '#000'}}>
+                 <iframe title="Voice and Video" allow="camera; microphone; fullscreen; display-capture" src={`https://meet.jit.si/talk_app_server_${server.id}_channel_${channel.id}`} style={{width: '100%', height: '100%', border: 'none'}} />
+               </div>
+            ) : (
+              <>
+                <main>
+                  {messages && messages.map((m) => (
+                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverOwner={server.owner} serverAdmins={server.admins || []} />
                   ))}
-                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
-                  {userMatches.map(u => (
-                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
-                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
-                      <span>{u.displayName}</span>
+                  <span ref={dummy}></span>
+                </main>
+                <div className="form-wrapper">
+                  {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
+                    <div className="mention-menu">
+                      {aiMatches.map(ai => <div key={ai} className="mention-item" onClick={() => insertMention(ai)}><span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span></div>)}
+                      {userMatches.map(u => <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}><img src={u.photoURL || DEFAULT_AVATAR} alt="user" /><span>{u.displayName}</span></div>)}
                     </div>
-                  ))}
+                  )}
+                  {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+                  {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
+                  <form onSubmit={sendMsg}>
+                    <div className="upload-btn">
+                      <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
+                    </div>
+                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
+                    <button type="submit" style={{display:'none'}}></button>
+                  </form>}
                 </div>
-              )}
-
-              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-              {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
-              <form onSubmit={sendMsg}>
-                <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
-                    +
-                    <input type="file" style={{display:'none'}} onChange={handleFile} />
-                  </label>
-                </div>
-                <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message #${channel.name}`} autoComplete="off" />
-                <button type="submit" style={{display:'none'}}></button>
-              </form>}
-            </div>
+              </>
+            )}
           </>
         ) : <EmptyChannelState />}
       </div>
@@ -711,7 +648,13 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         {members.map(u => (
           <div className="member-item" key={u.uid} onClick={()=>{openProfile(u); setShowMembers(false);}}>
             <img src={u.photoURL||DEFAULT_AVATAR} alt="user" />
-            <span style={{color: u.email==='vincentr111222@gmail.com' ? '#f0b232':''}}>{u.displayName}</span>
+            <div style={{display:'flex', flexDirection:'column'}}>
+              <span style={{color: u.email==='vincentr111222@gmail.com' ? '#f0b232':''}}>{u.displayName}</span>
+              <div style={{display: 'flex', gap: '4px', marginTop: '2px'}}>
+                {server.owner === u.uid && <span style={{background: '#f0b232', color: '#000', fontSize: 9, padding: '2px 4px', borderRadius: 4, fontWeight: 'bold'}}>OWNER</span>}
+                {server.admins && server.admins.includes(u.uid) && <span style={{background: '#5865F2', color: '#fff', fontSize: 9, padding: '2px 4px', borderRadius: 4, fontWeight: 'bold'}}>ADMIN</span>}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -721,89 +664,46 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
 function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
-  const [mentionQuery, setMentionQuery] = useState(null);
-  
+  const [mentionQuery, setMentionQuery] = useState(null); const [rateLimitTimer, setRateLimitTimer] = useState([]);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
-  const callRef = activeDM ? firestore.collection('calls').doc(activeDM.id) : null;
-  const [callData] = useDocumentData(callRef);
-  const [inCall, setInCall] = useState(false);
-  const [isCaller, setIsCaller] = useState(false);
 
-  useEffect(() => {
-    if (callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '')) {
-      if (window.Notification && Notification.permission === 'granted') {
-         new Notification("Incoming Video Call 📞", { body: activeDM.target.displayName + " is calling you on Talk!", requireInteraction: true });
-      }
-    }
-  }, [callData]);
-  
-  const [lastMsgId, setLastMsgId] = useState(null);
+  useEffect(() => { if (dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  useEffect(() => {
-    if (messages && messages.length > 0) {
-      const latest = messages[messages.length - 1];
-      if (lastMsgId && latest.id !== lastMsgId && auth.currentUser && latest.uid !== auth.currentUser.uid) {
-        const now = new Date();
-        const msgDate = (latest.createdAt && latest.createdAt.toDate) ? latest.createdAt.toDate() : new Date();
-        if ((now - msgDate) < 5000) {
-          if (window.Notification && Notification.permission === 'granted') {
-             new Notification('DM from ' + latest.displayName, { body: latest.text, icon: latest.photoURL || DEFAULT_AVATAR });
-          }
-        }
-      }
-      setLastMsgId(latest.id);
-    }
-  }, [messages]);
-
-  const toggleSidebar = () => { 
-    if (window.innerWidth <= 768) {
-      setMobileNavOpen(true); 
-    } else {
-      setChannelsOpenPC(!channelsOpenPC); 
-    }
-  };
+  const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
 
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
 
-    const text = form.trim();
-    let aiModel = null; let aiPrompt = null; let triggerUsed = null;
+    const now = Date.now();
+    const recent = rateLimitTimer.filter(t => now - t < 5000);
+    if (recent.length >= 4) return alert("Rate limit active. Please wait 5 seconds.");
+    setRateLimitTimer([...recent, now]);
 
+    const text = form.trim(); let aiModel = null; let triggerUsed = null; let aiPrompt = null;
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
-      if (text.toLowerCase().startsWith(trigger + ' ')) {
-        aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break;
-      }
+      if (text.toLowerCase().startsWith(trigger + ' ')) { aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break; }
     }
 
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User' });
+        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
         await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         setForm(''); setFile(null); 
-        if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
-
+        
         if (aiModel && aiPrompt) {
-          const msgId = window.crypto.randomUUID();
-          const token = await generateToken(msgId);
-          const response = await fetch(`${BACKEND_URL}/chat`, {
-            method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel })
-          });
+          const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
+          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
           if (!response.ok) throw new Error("AI failed to respond.");
-          
           await msgsRef.add({ text: await response.text(), createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
-          await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-          if(dummy.current) dummy.current.scrollIntoView({ behavior: 'smooth' });
         }
-      } catch (err) {
-        if(checkQuotaError(err)) alert("Message failed to send: Daily Quota Exceeded.");
-      }
+      } catch (err) { if(checkQuotaError(err)) alert("Daily Quota Exceeded."); }
     }
   };
 
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
-    if(f.size > 500000) return alert("Max 500KB.");
+    if(f.size > 1500000) return alert("Max 1.5MB.");
     const reader = new FileReader();
     reader.onload = (ev) => {
       if(f.type.startsWith('image/')) {
@@ -815,32 +715,19 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     }; reader.readAsDataURL(f);
   };
 
-  let sortedDMs = [];
-  if (dms) {
-    sortedDMs = [...dms].sort((a,b) => {
-      const timeA = (a && a.updatedAt && a.updatedAt.toMillis) ? a.updatedAt.toMillis() : 0;
-      const timeB = (b && b.updatedAt && b.updatedAt.toMillis) ? b.updatedAt.toMillis() : 0;
-      return timeB - timeA;
-    });
-  }
-
   const handleTextChange = (e) => {
-    const val = e.target.value; setForm(val);
-    const lastWord = val.split(' ').pop();
-    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase());
-    else setMentionQuery(null);
+    const val = e.target.value; setForm(val); const lastWord = val.split(' ').pop();
+    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
   };
 
   const insertMention = (tag) => {
-    const words = form.split(' '); words.pop();
-    setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' ');
-    setMentionQuery(null);
-    const input = document.getElementById('dm-chat-input');
-    if (input) input.focus();
+    const words = form.split(' '); words.pop(); setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' '); setMentionQuery(null);
+    const input = document.getElementById('dm-chat-input'); if (input) input.focus();
   };
 
   const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
   const userMatches = mentionQuery !== null && allUsers ? allUsers.filter(u => !u.banned && u.displayName.toLowerCase().includes(mentionQuery)) : [];
+  let sortedDMs = dms ? [...dms].sort((a,b) => ((b && b.updatedAt && b.updatedAt.toMillis) ? b.updatedAt.toMillis() : 0) - ((a && a.updatedAt && a.updatedAt.toMillis) ? a.updatedAt.toMillis() : 0)) : [];
 
   return (
     <>
@@ -875,69 +762,25 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                 <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
                 <div className="header-title">@{activeDM.target.displayName}</div>
               </div>
-              <button className="settings-btn" onClick={() => { setInCall(true); setIsCaller(true); }} style={{background: '#23a559', color: 'white', borderRadius: '50%', width: 32, height: 32, padding: 0, fontSize: 14}} title="Start Video Call">📞</button>
             </header>
-
-            {callData && callData.status === 'ringing' && !inCall && callData.callerName !== (myData ? myData.displayName : '') && (
-              <div className="incoming-call-banner">
-                <span>📞 Incoming video call from {activeDM.target.displayName}...</span>
-                <div style={{display: 'flex', gap: '8px'}}>
-                  <button onClick={() => { setInCall(true); setIsCaller(false); }} style={{background: '#fff', color: '#23a559', padding: '6px 16px', borderRadius: 16}}>Answer</button>
-                  <button onClick={() => callRef.set({status: 'ended'})} style={{background: '#da373c', color: '#fff', padding: '6px 16px', borderRadius: 16, border: 'none'}}>Decline</button>
-                </div>
-              </div>
-            )}
-
-            {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={isCaller} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
-
             <main>
               {messages && messages.map((m) => (
-                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} />
+                 <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} />
               ))}
               <span ref={dummy}></span>
             </main>
             <div className="form-wrapper">
-              <div className="ai-tooltip" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                <div style={{ color: '#dbdee1' }}>✨ <strong>Talk to VincentAI:</strong> Type an AI tag, followed by your prompt.</div>
-                <div style={{ fontSize: '11px', color: '#80848e' }}>Example: <span style={{ color: '#dbdee1' }}>@deepseek Write a poem about noobs</span></div>
-                
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px', alignItems: 'center' }}>
-                  <strong style={{ color: '#f0b232', fontSize: '11px' }}>RECOMMENDED:</strong>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@deepseek</span>
-                  <span style={{ border: '1px solid #f0b232', color: '#f0b232', padding: '2px 6px', borderRadius: '4px' }}>@copilot</span>
-                  <strong style={{ color: '#80848e', fontSize: '11px', marginLeft: '8px' }}>OTHERS:</strong>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@chatgpt</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@llama</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@qwen</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@gpt5</span>
-                  <span style={{background: '#2b2d31', padding: '2px 6px', borderRadius: '4px'}}>@venice</span>
-                </div>
-              </div>
-
               {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
                 <div className="mention-menu">
-                  {aiMatches.length > 0 && <div className="mention-category">AI Bots</div>}
-                  {aiMatches.map(ai => (
-                    <div key={ai} className="mention-item" onClick={() => insertMention(ai)}>
-                      <span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span>
-                    </div>
-                  ))}
-                  {userMatches.length > 0 && <div className="mention-category">Users</div>}
-                  {userMatches.map(u => (
-                    <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}>
-                      <img src={u.photoURL || DEFAULT_AVATAR} alt="user" />
-                      <span>{u.displayName}</span>
-                    </div>
-                  ))}
+                  {aiMatches.map(ai => <div key={ai} className="mention-item" onClick={() => insertMention(ai)}><span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span></div>)}
+                  {userMatches.map(u => <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}><img src={u.photoURL || DEFAULT_AVATAR} alt="user" /><span>{u.displayName}</span></div>)}
                 </div>
               )}
-
               {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
               <form onSubmit={sendMsg}>
                 <div className="upload-btn">
                   <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
-                    +
-                    <input type="file" style={{display:'none'}} onChange={handleFile} />
+                    + <input type="file" style={{display:'none'}} onChange={handleFile} />
                   </label>
                 </div>
                 <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} placeholder={`Message @${activeDM.target.displayName}`} autoComplete="off" />
