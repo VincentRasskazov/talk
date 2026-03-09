@@ -567,233 +567,172 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   );
 }
 
-function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, onLoginClick, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, allUsers, openProfile, myData, openSettings, setZoomImage, editServer }) {
-  const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
-  const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
-  const [collapsedCats, setCollapsedCats] = useState({});
-  const channelsRef = firestore.collection(`servers/${server.id}/channels`);
-  const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
-  const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
-  const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
-  
-  const categories = {};
-  if (channels) {
-    channels.forEach(c => {
-      const cat = c.category || 'Uncategorized';
-      if (!categories[cat]) categories[cat] = [];
-      categories[cat].push(c);
-    });
-  }
+function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin }) {
+  const [tab, setTab] = useState('overview');
+  const [name, setName] = useState(server.name); 
+  const [description, setDescription] = useState(server.description || '');
+  const [icon, setIcon] = useState(server.icon || '');
+  const [bannerURL, setBannerURL] = useState(server.bannerURL || '');
+  const [isPublic, setIsPublic] = useState(server.isPublic || false);
+  const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
+  const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
+  const [roles, setRoles] = useState(server.roles || []);
 
-  useEffect(() => { 
-    if (channel && server) {
-      localStorage.setItem(`read_chan_${channel.id}`, Date.now().toString());
-      localStorage.setItem(`read_server_${server.id}`, Date.now().toString());
-    }
-    const timer = setTimeout(() => {
-      if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [messages, channel, server]);
-  useEffect(() => { if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); }, [channels, server]);
+  const isOwner = auth.currentUser && server.owner === auth.currentUser.uid;
+  const bannedUsers = allUsers ? allUsers.filter(u => server.banned && server.banned.includes(u.uid)) : [];
 
-  const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
-  const canManage = isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid) || (server.admins && auth.currentUser && server.admins.includes(auth.currentUser.uid));
+  const unbanUser = async (uid) => {
+    try {
+      await firestore.collection('servers').doc(server.id).update({ banned: firebase.firestore.FieldValue.arrayRemove(uid) });
+    } catch (err) { alert(err.message); }
+  };
 
-  const sendMsg = async (e) => {
-    e.preventDefault(); if(isGuest) return onLoginClick();
-    if (!form.trim() && !file) return;
-
-    // Advanced Persistent Rate Limiter (survives page reloads to protect quota)
-    const recentSends = JSON.parse(localStorage.getItem('spam_filter') || '[]').filter(t => Date.now() - t < 10000);
-    if (recentSends.length >= 5) {
-      return alert("⏳ Slow down! Advanced rate limit active to protect server quota. Try again in 10 seconds.");
-    }
-    localStorage.setItem('spam_filter', JSON.stringify([...recentSends, Date.now()]));
-
-    const text = form.trim();
-    let aiModel = null; let triggerUsed = null; let aiPrompt = null;
-    for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
-      if (text.toLowerCase().startsWith(trigger + ' ')) { aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break; }
-    }
-
-    if (msgsRef && auth.currentUser) {
+  const deleteServer = async () => {
+    if (window.confirm(`Are you absolutely sure you want to delete ${server.name}? This cannot be undone.`)) {
       try {
-        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        await firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-        await firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-        setForm(''); setFile(null); 
-        
-        if (aiModel && aiPrompt) {
-          const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
-          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
-          if (!response.ok) throw new Error("AI failed");
-          const aiResult = await response.text();
-          await msgsRef.add({ text: aiResult, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
-        }
-      } catch (err) { if(checkQuotaError(err)) alert("Message failed to send: Quota Exceeded."); }
+        await firestore.collection('servers').doc(server.id).delete();
+        setView('discovery');
+        close();
+      } catch(err) { alert(err.message); }
     }
   };
 
-  const handleFile = (e) => {
-    if(isGuest) return onLoginClick();
-    const f = e.target.files[0]; if(!f) return;
-    if(f.size > 1500000) return alert("File too large. Max 1.5MB.");
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if(f.type.startsWith('image/')) {
-        const img = new Image(); img.onload = () => {
-          const cvs = document.createElement('canvas'); let w=img.width, h=img.height; if(w>800){h*=800/w; w=800;} cvs.width=w; cvs.height=h; cvs.getContext('2d').drawImage(img,0,0,w,h);
-          setFile({ data: cvs.toDataURL(f.type, 0.7), type: 'image', name: f.name });
-        }; img.src = ev.target.result;
-      } else setFile({ data: ev.target.result, type: 'file', name: f.name });
-    }; reader.readAsDataURL(f);
-  };
-
-  const handleTextChange = (e) => {
-    const val = e.target.value; setForm(val); const lastWord = val.split(' ').pop();
-    if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
-  };
-  const insertMention = (tag) => {
-    const words = form.split(' '); words.pop(); setForm(words.length > 0 ? words.join(' ') + ' ' + tag + ' ' : tag + ' '); setMentionQuery(null);
-    const input = document.getElementById('server-chat-input'); if (input) input.focus();
-  };
-
-  const handlePaste = (e) => {
-    if(e.clipboardData && e.clipboardData.items) {
-      for(let i=0; i<e.clipboardData.items.length; i++) {
-        if(e.clipboardData.items[i].type.indexOf('image') !== -1) {
-          const blob = e.clipboardData.items[i].getAsFile();
-          handleFile({ target: { files: [blob] } });
-        }
+  const save = async () => {
+    if (auth.currentUser) {
+      const inviteCode = !isPublic ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
+      let members = server.members || [];
+      if (!isPublic && members.length === 0) members = [auth.currentUser.uid];
+      try {
+        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPublic, isDiscoverable, inviteCode, members, roles }); 
+        close(); 
+      } catch (err) {
+        if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
       }
     }
   };
 
-  const aiMatches = mentionQuery !== null ? Object.keys(AI_MODELS).filter(k => k.toLowerCase().includes(mentionQuery)) : [];
-  const members = allUsers ? allUsers.filter(u => !u.banned && (server.isPrivate ? server.members && server.members.includes(u.uid) : true)) : [];
-  const userMatches = mentionQuery !== null ? members.filter(u => u.displayName.toLowerCase().includes(mentionQuery)) : [];
-
   return (
-    <>
-      <div className={`channels ${mobileNavOpen ? 'open' : ''} ${!channelsOpenPC ? 'closed' : ''}`}>
-        <div className="channels-header" style={server.bannerURL ? {backgroundImage: `url(${server.bannerURL})`} : {}}>
-          {server.bannerURL && <div className="channels-header-overlay"></div>}
-          <div style={{position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
-            <h3 style={{textShadow: server.bannerURL ? '0 2px 4px rgba(0,0,0,0.9)' : 'none', color: server.bannerURL ? '#fff' : '#f2f3f5', margin: 0}}>{server.name}</h3>
-            {canManage && <button onClick={editServer} style={{background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px'}}>⚙️</button>}
-          </div>
-          {canManage && <button className="add-btn" onClick={async()=>{
-            const type = window.confirm("Click OK for Text Channel, or Cancel for Voice/Video Channel") ? 'text' : 'voice';
-            const cat = prompt("Category Name (leave blank for Uncategorized):");
-            const n = prompt("Channel Name:"); 
-            if(n) {
-              try { await channelsRef.add({name: n.toLowerCase(), type: type, category: cat || 'Uncategorized', createdAt: firebase.firestore.FieldValue.serverTimestamp()}) }
-              catch(err){ if(checkQuotaError(err)) alert("Quota Exceeded."); }
-            }
-          }}>+</button>}
+    <div className="overlay" style={{zIndex:1002}}>
+      <div className="modal-box" style={{width: 550, padding: 0, overflow: 'hidden'}}>
+        <div style={{display: 'flex', background: '#2b2d31', borderBottom: '1px solid #1e1f22'}}>
+          <button onClick={() => setTab('overview')} style={{flex: 1, padding: 16, background: tab === 'overview' ? '#35373c' : 'transparent', color: tab === 'overview' ? '#fff' : '#b5bac1', borderRadius: 0}}>Overview</button>
+          {(isOwner || isAdmin) && <button onClick={() => setTab('roles')} style={{flex: 1, padding: 16, background: tab === 'roles' ? '#35373c' : 'transparent', color: tab === 'roles' ? '#fff' : '#b5bac1', borderRadius: 0}}>Roles</button>}
+          <button onClick={() => setTab('moderation')} style={{flex: 1, padding: 16, background: tab === 'moderation' ? '#35373c' : 'transparent', color: tab === 'moderation' ? '#fff' : '#b5bac1', borderRadius: 0}}>Moderation</button>
+          {(isOwner || isAdmin) && <button onClick={() => setTab('danger')} style={{flex: 1, padding: 16, background: tab === 'danger' ? '#da373c' : 'transparent', color: tab === 'danger' ? '#fff' : '#b5bac1', borderRadius: 0}}>Danger Zone</button>}
         </div>
-        <div className="channel-list" style={{overflowY: 'auto'}}>
-          {Object.keys(categories).map(catName => {
-            const isCollapsed = collapsedCats[catName];
-            return (
-              <div key={catName}>
-                <div onClick={() => setCollapsedCats({...collapsedCats, [catName]: !isCollapsed})} style={{color: '#949ba4', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', padding: '16px 8px 4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: '0.2s', userSelect: 'none'}}>
-                  <span style={{transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: '0.2s', display: 'inline-block'}}>▼</span> {catName}
+        
+        <div style={{padding: 24, maxHeight: '70vh', overflowY: 'auto'}}>
+          {tab === 'overview' && (
+            <>
+              <div style={{display: 'flex', gap: '20px', alignItems: 'flex-start'}}>
+                <div style={{display:'flex', flexDirection:'column', gap: 12, alignItems: 'center'}}>
+                  <div style={{width:80, height:80, borderRadius:'50%', background: icon && icon.startsWith('data:') ? `url(${icon}) center/cover` : theme, display:'flex', justifyContent:'center', alignItems:'center', color:'white', fontWeight:'bold', fontSize:'28px', boxShadow:'0 4px 8px rgba(0,0,0,0.3)'}}>
+                     {(!icon || !icon.startsWith('data:')) ? (icon || name.charAt(0).toUpperCase()) : ''}
+                  </div>
+                  <label className="b64-upload-btn" style={{margin: 0}}>Upload Icon<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 150, 150, setIcon)} /></label>
                 </div>
-                {!isCollapsed && categories[catName].map(c => {
-                  const isUnread = c.updatedAt && c.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_chan_${c.id}`) || '0') && (!channel || channel.id !== c.id);
-                  return (
-                    <div key={c.id} className={`channel ${channel && channel.id===c.id ? 'active':''}`} onClick={()=>{setChannel(c); closeAllMenus();}}>
-                      <span className="channel-name" style={{color: isUnread ? '#fff' : '', fontWeight: isUnread ? 'bold' : '500'}}>
-                        <span className="hash-icon">{c.type === 'voice' ? '🔊' : '#'}</span> {c.name}
-                        {isUnread && <div style={{width: 6, height: 6, borderRadius: '50%', background: '#fff', marginLeft: 6}} />}
-                      </span>
-                      {canManage && <button className="del-btn" onClick={async(e)=>{e.stopPropagation(); if(window.confirm("Delete channel?")) await channelsRef.doc(c.id).delete();}}>✕</button>}
-                    </div>
-                  );
-                })}
+                
+                <div style={{flex: 1, display:'flex', flexDirection:'column', gap: 12}}>
+                  <div style={{width:'100%', height:80, borderRadius:8, background: bannerURL ? `url(${bannerURL}) center/cover` : '#1e1f22', border: '1px solid #1e1f22'}}></div>
+                  <label className="b64-upload-btn" style={{margin: 0, alignSelf:'flex-start'}}>Upload Banner<input type="file" accept="image/*" onChange={e => compressImage(e.target.files[0], 600, 200, setBannerURL)} /></label>
+                </div>
               </div>
-            );
-          })}
-        </div>
-        <div className="user-panel">
-          <div className="user-panel-info" onClick={()=>!isGuest && openProfile(myData)}>
-            <div className="avatar-container"><img src={isGuest ? DEFAULT_AVATAR : (myData ? myData.photoURL : DEFAULT_AVATAR)} alt="PFP" /></div>
-            <div><strong>{isGuest?'Guest':(myData ? myData.displayName : 'User')}</strong></div>
-          </div>
-          {!isGuest ? <button className="settings-btn" onClick={openSettings}>⚙️</button> : <button className="auth-btn" onClick={onLoginClick} style={{margin:0, padding:'8px 12px', width:'auto', background:theme}}>Login</button>}
-        </div>
-      </div>
 
-      <div className="chat-container">
-        {channel ? (
-          <>
-            <header>
-              <div className="header-left">
-                <button className="mobile-nav-toggle" onClick={toggleSidebar}>☰</button>
-                <div className="header-title">
-                  <span className="hash-icon" style={{color: '#80848e', marginRight: 6}}>{channel.type === 'voice' ? '🔊' : '#'}</span> {channel.name} 
-                  {server.description && <span style={{marginLeft: 12, paddingLeft: 12, borderLeft: '1px solid #3f4147', fontSize: 13, color: '#949ba4', fontWeight: '500'}}>{server.description}</span>}
+              <label style={{marginTop: 16}}>SERVER NAME</label>
+              <input value={name} onChange={e=>setName(e.target.value)} />
+              
+              <label style={{marginTop: 16}}>SERVER DESCRIPTION</label>
+              <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={2} style={{resize: 'none'}} placeholder="What is this server about?" />
+              
+              {(isOwner || isAdmin) && (
+                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>List on Discovery</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Allow users to find this server via Discovery</span></div>
+                  <div onClick={()=>setIsDiscoverable(!isDiscoverable)} style={{width:40,height:24,background:isDiscoverable?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isDiscoverable?19:3,transition:'0.3s'}}/></div>
                 </div>
-              </div>
-              <button className="member-toggle" onClick={()=>setShowMembers(!showMembers)} style={{color: showMembers?theme:''}}>👥</button>
-            </header>
-            
-            {channel.type === 'voice' ? (
-               <div style={{flex: 1, display: 'flex', flexDirection: 'column', background: '#000', position: 'relative'}}>
-                 <div style={{padding: 16, background: '#2b2d31', color: '#dbdee1', textAlign: 'center'}}>Native Server Voice Channel (Beta)</div>
-                 <VideoCallRoom dmId={`server_${server.id}_${channel.id}`} isCaller={true} closeCall={() => setChannel(channels.find(c => c.type==='text') || null)} myName={myData ? myData.displayName : 'User'} otherName={`#${channel.name}`} targetUid="server_room" />
-               </div>
-            ) : (
-              <>
-                <main>
-                  {messages && messages.map((m) => (
-                    <ChatMessage key={m.id} msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} />
-                  ))}
-                  <span ref={dummy}></span>
-                </main>
-                <div className="form-wrapper">
-                  {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
-                    <div className="mention-menu">
-                      {aiMatches.map(ai => <div key={ai} className="mention-item" onClick={() => insertMention(ai)}><span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span></div>)}
-                      {userMatches.map(u => <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}><img src={u.photoURL || DEFAULT_AVATAR} alt="user" /><span>{u.displayName}</span></div>)}
-                    </div>
-                  )}
-                  {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-                  {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
-                  <form onSubmit={sendMsg}>
-                    <div className="upload-btn">
-                      <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
-                    </div>
-                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message #${channel.name} (or Paste Image)`} autoComplete="off" />
-                    <button type="submit" style={{display:'none'}}></button>
-                  </form>}
-                </div>
-              </>
-            )}
-          </>
-        ) : <EmptyChannelState />}
-      </div>
+              )}
 
-      {showMembers && <div className="mobile-overlay open" onClick={()=>setShowMembers(false)} style={{zIndex: 104}}></div>}
-      <div className={`member-list ${!showMembers ? 'hidden' : ''} ${showMembers && window.innerWidth <= 900 ? 'mobile-open' : ''}`}>
-        <div className="member-group-title">Members — {members.length}</div>
-        {members.map(u => (
-          <div className="member-item" key={u.uid} onClick={()=>{openProfile(u); setShowMembers(false);}}>
-            <img src={u.photoURL||DEFAULT_AVATAR} alt="user" />
-            <div style={{display:'flex', flexDirection:'column'}}>
-              <span style={{color: u.email==='vincentr111222@gmail.com' ? '#f0b232':''}}>{u.displayName}</span>
-              <div style={{display: 'flex', gap: '4px', marginTop: '2px'}}>
-                {server.owner === u.uid && <span style={{background: '#f0b232', color: '#000', fontSize: 9, padding: '2px 4px', borderRadius: 4, fontWeight: 'bold'}}>OWNER</span>}
-                {server.admins && server.admins.includes(u.uid) && <span style={{background: '#5865F2', color: '#fff', fontSize: 9, padding: '2px 4px', borderRadius: 4, fontWeight: 'bold'}}>ADMIN</span>}
+              {isAdmin && (
+                <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                  <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#f0b232', fontSize:14}}>Admin Override: Public Server</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Toggle ON to make this server public for everyone</span></div>
+                  <div onClick={()=>setIsPublic(!isPublic)} style={{width:40,height:24,background:isPublic?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isPublic?19:3,transition:'0.3s'}}/></div>
+                </div>
+              )}
+              
+              {!isPublic && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+              
+              <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
+                <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
+                <div onClick={() => { localStorage.setItem('mute_' + server.id, !isMuted); setIsMuted(!isMuted); }} style={{width:40,height:24,background:isMuted?'#da373c':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:isMuted?19:3,transition:'0.3s'}}/></div>
               </div>
-            </div>
-          </div>
-        ))}
+            </>
+          )}
+
+          {tab === 'roles' && (isOwner || isAdmin) && (
+            <>
+              <h3 style={{color: '#fff', marginTop: 0}}>Custom Roles</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Create custom roles with specific colors.</p>
+              
+              <div style={{display: 'flex', gap: 8, marginBottom: 16}}>
+                <button onClick={() => setRoles([...roles, { id: Date.now().toString(), name: 'New Role', color: '#99aab5' }])} style={{background: theme, color: '#fff', padding: '8px 16px'}}>+ Create Role</button>
+              </div>
+
+              {roles.map((r, i) => (
+                <div key={r.id} style={{display: 'flex', flexDirection: 'column', gap: 8, background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, border: '1px solid #1e1f22'}}>
+                  <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+                    <div style={{width: 24, height: 24, borderRadius: '50%', background: r.color, flexShrink: 0}}></div>
+                    <input value={r.name} onChange={(e) => { const newRoles = [...roles]; newRoles[i].name = e.target.value; setRoles(newRoles); }} style={{margin: 0, padding: 8}} placeholder="Role Name" />
+                    <input type="color" value={r.color} onChange={(e) => { const newRoles = [...roles]; newRoles[i].color = e.target.value; setRoles(newRoles); }} style={{width: 40, height: 36, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer'}} />
+                    <button onClick={() => setRoles(roles.filter(role => role.id !== r.id))} style={{background: '#da373c', color: '#fff', padding: '8px', fontSize: 12}}>DEL</button>
+                  </div>
+                  <div style={{display: 'flex', gap: 16, fontSize: 13, color: '#b5bac1', marginTop: 4}}>
+                    <label style={{display: 'flex', alignItems: 'center', gap: 6, margin: 0, textTransform: 'none', fontWeight: 'normal'}}>
+                      <input type="checkbox" checked={r.perms && r.perms.delMsg} onChange={(e) => { const newRoles = [...roles]; if(!newRoles[i].perms) newRoles[i].perms={}; newRoles[i].perms.delMsg = e.target.checked; setRoles(newRoles); }} style={{width: 16, height: 16, margin: 0}} /> Can Delete Messages
+                    </label>
+                    <label style={{display: 'flex', alignItems: 'center', gap: 6, margin: 0, textTransform: 'none', fontWeight: 'normal'}}>
+                      <input type="checkbox" checked={r.perms && r.perms.kick} onChange={(e) => { const newRoles = [...roles]; if(!newRoles[i].perms) newRoles[i].perms={}; newRoles[i].perms.kick = e.target.checked; setRoles(newRoles); }} style={{width: 16, height: 16, margin: 0}} /> Can Kick Users
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {tab === 'moderation' && (
+            <>
+              <h3 style={{color: '#fff', marginTop: 0}}>Banned Users</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Manage users who have been banned from this server.</p>
+              {bannedUsers.length === 0 ? <div style={{color: '#80848e', fontStyle: 'italic', padding: 16, textAlign: 'center', background: '#1e1f22', borderRadius: 8}}>No banned users.</div> : bannedUsers.map(u => (
+                <div key={u.uid} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#2b2d31', padding: 12, borderRadius: 8, marginBottom: 8, border: '1px solid #1e1f22'}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
+                    <img src={u.photoURL || DEFAULT_AVATAR} style={{width: 32, height: 32, borderRadius: '50%'}} alt="pfp" />
+                    <strong style={{color: '#fff'}}>{u.displayName}</strong>
+                  </div>
+                  <button onClick={() => unbanUser(u.uid)} style={{background: '#35373c', color: '#dbdee1', padding: '6px 12px', fontSize: 12}}>Revoke Ban</button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {tab === 'danger' && isOwner && (
+            <>
+              <h3 style={{color: '#da373c', marginTop: 0}}>Danger Zone</h3>
+              <p style={{color: '#949ba4', fontSize: 13}}>Irreversible actions for your server.</p>
+              <div style={{border: '1px solid #da373c', borderRadius: 8, padding: 16, background: 'rgba(218, 55, 60, 0.1)'}}>
+                <strong style={{color: '#fff'}}>Delete Server</strong>
+                <p style={{color: '#dbdee1', fontSize: 13, marginTop: 4, marginBottom: 16}}>This will permanently delete the server, all channels, and all messages. This action cannot be undone.</p>
+                <button onClick={deleteServer} style={{background: '#da373c', color: '#fff', padding: '10px 16px', width: '100%'}}>Delete Server</button>
+              </div>
+            </>
+          )}
+        </div>
+        
+        <div style={{display: 'flex', gap: '12px', padding: 24, background: '#2b2d31', borderTop: '1px solid #1e1f22'}}>
+          <button onClick={close} style={{flex: 1, background: '#4e5058', color: 'white', padding: '14px'}}>Cancel</button>
+          <button onClick={save} style={{flex: 1, background: theme, color: 'white', padding: '14px'}}>Save Changes</button>
+        </div>
       </div>
-    </>
-  )
+    </div>
+  );
 }
 
 function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
@@ -976,6 +915,27 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
   
   const serverOwner = currentServer ? currentServer.owner : null;
   const serverAdmins = currentServer ? currentServer.admins || [] : [];
+
+  const formatText = (text) => {
+    if (!text) return null;
+    return text.split('\n').map((line, i) => {
+      let formattedLine = line;
+      let isHeader = false;
+      if (formattedLine.startsWith('### ')) {
+        isHeader = true;
+        formattedLine = formattedLine.substring(4);
+      }
+      const parts = formattedLine.split(/(\*\*.*?\*\*)/g).map((part, j) => {
+        if (part.startsWith('**') && part.endsWith('**')) return <strong key={j}>{part.substring(2, part.length - 2)}</strong>;
+        return part;
+      });
+      return (
+        <span key={i} style={isHeader ? { fontSize: '1.1em', fontWeight: 'bold', display: 'block', marginTop: '8px', marginBottom: '4px', color: '#fff' } : {}}>
+          {parts}<br />
+        </span>
+      );
+    });
+  };
   
   let roleColor = '#f2f3f5';
   if (currentServer && currentServer.userRoles && currentServer.userRoles[msg.uid] && currentServer.roles) {
@@ -1037,7 +997,7 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
           <div style={{ fontSize: '11px', color: '#949ba4', marginTop: '4px' }}>Press Enter to save, or <span style={{color: '#5865F2', cursor: 'pointer'}} onClick={() => setIsEditing(false)}>cancel</span>.</div>
         </form>
       ) : (
-        msg.text ? <p>{msg.text}</p> : null
+        msg.text ? <div style={{ margin: 0, color: '#dbdee1', fontSize: 15, lineHeight: '1.45rem', wordBreak: 'break-word' }}>{formatText(msg.text)}</div> : null
       )}
       {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onLoad={(e) => { if (e.target && e.target.scrollIntoView) e.target.scrollIntoView({ behavior: 'smooth', block: 'end' }); }} onClick={()=>setZoomImage(msg.fileData)} />}
         {msg.fileData && msg.fileType==='file' && <a href={msg.fileData} download={msg.fileName} className="msg-file">📎 Download {msg.fileName}</a>}
