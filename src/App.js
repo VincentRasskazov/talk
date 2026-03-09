@@ -1022,22 +1022,37 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
 
   const formatText = (text) => {
     if (!text) return null;
-    return text.split('\n').map((line, i) => {
-      let formattedLine = line;
-      let isHeader = false;
-      if (formattedLine.startsWith('### ')) {
-        isHeader = true;
-        formattedLine = formattedLine.substring(4);
-      }
-      const parts = formattedLine.split(/(\*\*.*?\*\*)/g).map((part, j) => {
-        if (part.startsWith('**') && part.endsWith('**')) return <strong key={j}>{part.substring(2, part.length - 2)}</strong>;
-        return part;
+    
+    // Force replace escaped \n strings with real system newlines
+    const cleanText = text.replace(/\\n/g, '\n');
+    
+    return cleanText.split('\n').map((line, i) => {
+      let el = line;
+      let isH1 = false, isH2 = false, isH3 = false, isQuote = false;
+
+      if (el.startsWith('### ')) { isH3 = true; el = el.substring(4); }
+      else if (el.startsWith('## ')) { isH2 = true; el = el.substring(3); }
+      else if (el.startsWith('# ')) { isH1 = true; el = el.substring(2); }
+      else if (el.startsWith('> ')) { isQuote = true; el = el.substring(2); }
+
+      // Magic Regex to safely parse bold, italic, and inline code blocks
+      const tokens = el.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+
+      const formattedTokens = tokens.map((tok, j) => {
+        if (tok.startsWith('**') && tok.endsWith('**')) return <strong key={j}>{tok.slice(2, -2)}</strong>;
+        if (tok.startsWith('*') && tok.endsWith('*')) return <em key={j}>{tok.slice(1, -1)}</em>;
+        if (tok.startsWith('`') && tok.endsWith('`')) return <code key={j} style={{background: '#1e1f22', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', color: '#eb459e', fontSize: '0.9em'}}>{tok.slice(1, -1)}</code>;
+        return tok;
       });
-      return (
-        <span key={i} style={isHeader ? { fontSize: '1.1em', fontWeight: 'bold', display: 'block', marginTop: '8px', marginBottom: '4px', color: '#fff' } : {}}>
-          {parts}<br />
-        </span>
-      );
+
+      // Apply styling based on the detected markdown tag
+      let style = { display: 'block', minHeight: line.trim() === '' ? '1.2em' : 'auto' };
+      if (isH1) style = { ...style, fontSize: '1.5em', fontWeight: 'bold', marginTop: '12px', color: '#fff' };
+      if (isH2) style = { ...style, fontSize: '1.3em', fontWeight: 'bold', marginTop: '10px', color: '#fff' };
+      if (isH3) style = { ...style, fontSize: '1.1em', fontWeight: 'bold', marginTop: '8px', color: '#fff' };
+      if (isQuote) style = { ...style, borderLeft: '4px solid #4e5058', paddingLeft: '12px', fontStyle: 'italic', color: '#b5bac1', margin: '4px 0' };
+
+      return <span key={i} style={style}>{formattedTokens}</span>;
     });
   };
   
@@ -1101,7 +1116,7 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
           <div style={{ fontSize: '11px', color: '#949ba4', marginTop: '4px' }}>Press Enter to save, or <span style={{color: '#5865F2', cursor: 'pointer'}} onClick={() => setIsEditing(false)}>cancel</span>.</div>
         </form>
       ) : (
-        msg.text ? <div style={{ margin: 0, color: '#dbdee1', fontSize: 15, lineHeight: '1.45rem', wordBreak: 'break-word' }}>{formatText(msg.text)}</div> : null
+        msg.text ? <div style={{ margin: 0, color: '#dbdee1', fontSize: 15, lineHeight: '1.45rem', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{formatText(msg.text)}</div> : null
       )}
       {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onLoad={(e) => { if (e.target && e.target.scrollIntoView) e.target.scrollIntoView({ behavior: 'smooth', block: 'end' }); }} onClick={()=>setZoomImage(msg.fileData)} />}
         {msg.fileData && msg.fileType==='file' && <a href={msg.fileData} download={msg.fileName} className="msg-file">📎 Download {msg.fileName}</a>}
