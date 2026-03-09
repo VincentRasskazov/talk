@@ -853,7 +853,7 @@ function ChatMessage({ msg, msgRef, isAdmin, isGuest, theme, openProfile, onLogi
       ) : (
         msg.text ? <p>{msg.text}</p> : null
       )}
-      {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onClick={()=>setZoomImage(msg.fileData)} />}
+      {msg.fileData && msg.fileType==='image' && <img src={msg.fileData} className="msg-img" alt="attachment" onLoad={(e) => { if (e.target && e.target.scrollIntoView) e.target.scrollIntoView({ behavior: 'smooth', block: 'end' }); }} onClick={()=>setZoomImage(msg.fileData)} />}
         {msg.fileData && msg.fileType==='file' && <a href={msg.fileData} download={msg.fileName} className="msg-file">📎 Download {msg.fileName}</a>}
         
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -899,7 +899,8 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
           bannerURL: bannerURL || '' 
         }, {merge:true}); 
         
-        await auth.currentUser.updateProfile({ displayName: name || '', photoURL: photo || DEFAULT_AVATAR }); 
+        // Removed photoURL from Auth update to prevent Base64 string length errors
+        await auth.currentUser.updateProfile({ displayName: name || '' }); 
         alert("Profile saved successfully!");
       } catch (err) {
         if (checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded. Try again tomorrow.");
