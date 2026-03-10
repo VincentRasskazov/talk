@@ -827,9 +827,14 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       const showDivider = !dividerRendered && lastReadTime > 0 && msgTime > lastReadTime;
                       if (showDivider) dividerRendered = true;
                       return (
-                        <React.Fragment key={m.id}>
-                          {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
-                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} />
+                        <main>
+                  {messages && (() => {
+                    let dividerRendered = false;
+                    return messages.map((m) => {
+                      const msgTime = m.createdAt && m.createdAt.toMillis ? m.createdAt.toMillis() : Date.now();
+                      const showDivider = !dividerRendered && lastReadTime > 0 && msgTime > lastReadTime;
+                      if (showDivider) dividerRendered = true;
+                      return (
                         <React.Fragment key={m.id}>
                           {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
                           <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} allUsers={allUsers} />
@@ -847,6 +852,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                     </div>
                   )}
                   {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+                  
                   {showGif && (
                     <div style={{position: 'absolute', bottom: 'calc(100% + 10px)', right: '16px', background: '#2b2d31', padding: '12px', borderRadius: '8px', border: '1px solid #1e1f22', width: '320px', zIndex: 100, boxShadow: '0 8px 16px rgba(0,0,0,0.5)'}}>
                       <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
@@ -863,6 +869,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       </div>
                     </div>
                   )}
+
                   {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
                   <form onSubmit={sendMsg}>
                     <div className="upload-btn">
