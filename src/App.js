@@ -1104,6 +1104,44 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
+function UrlEmbed({ url, setZoomImage }) {
+  const [data, setData] = useState(null);
+  
+  const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) || url.includes('tenor.com');
+
+  useEffect(() => {
+    if (!isImage) {
+      fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`)
+        .then(res => res.json())
+        .then(json => {
+          if (json && json.status === 'success' && json.data) {
+            setData(json.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [url, isImage]);
+
+  if (isImage) {
+    return <img src={url} alt="embed" style={{display: 'block', maxWidth: '300px', maxHeight: '350px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid rgba(255,255,255,0.05)', objectFit: 'contain'}} onClick={(e) => { e.stopPropagation(); if (setZoomImage) setZoomImage(url); }} />;
+  }
+
+  if (data && (data.title || data.description)) {
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch(e) {}
+    
+    return (
+      <div style={{display: 'flex', flexDirection: 'column', background: '#2b2d31', borderLeft: '4px solid #1e1f22', borderRadius: '4px', padding: '12px', marginTop: '8px', maxWidth: '430px', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.05)'}} onClick={()=>window.open(url, '_blank')}>
+        <div style={{color: '#b5bac1', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px'}}>{data.publisher || hostname}</div>
+        {data.title && <div style={{color: '#00a8fc', fontWeight: 'bold', fontSize: '15px', marginBottom: '4px'}}>{data.title}</div>}
+        {data.description && <div style={{color: '#dbdee1', fontSize: '13px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3'}}>{data.description}</div>}
+        {data.image && data.image.url && <img src={data.image.url} alt="preview" style={{marginTop: '12px', maxWidth: '100%', maxHeight: '250px', borderRadius: '4px', objectFit: 'cover'}} />}
+      </div>
+    );
+  }
+  return null;
+}
+
 function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
@@ -1157,11 +1195,14 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
           if (tok.startsWith('`') && tok.endsWith('`')) return <code key={j} style={{background: '#1e1f22', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', color: '#eb459e', fontSize: '0.9em'}}>{tok.slice(1, -1)}</code>;
           
           if (tok.startsWith('http://') || tok.startsWith('https://')) {
-            const isImage = tok.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) || tok.includes('tenor.com');
+            const cleanUrl = tok.replace(/[.,;!?]$/, '');
+            const trailingPunctuation = tok.substring(cleanUrl.length);
+            
             return (
               <span key={j}>
-                <a href={tok} target="_blank" rel="noreferrer" style={{color: '#00a8fc', textDecoration: 'underline'}}>{tok}</a>
-                {isImage && <img src={tok} alt="embed" style={{display: 'block', maxWidth: '300px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid #1e1f22'}} onClick={(e) => { e.stopPropagation(); if (setZoomImage) setZoomImage(tok); }} />}
+                <a href={cleanUrl} target="_blank" rel="noreferrer" style={{color: '#00a8fc', textDecoration: 'underline'}}>{cleanUrl}</a>
+                {trailingPunctuation}
+                <UrlEmbed url={cleanUrl} setZoomImage={setZoomImage} />
               </span>
             );
           }
