@@ -286,10 +286,32 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
       } catch(e) { alert("Failed to leave."); }
     }
   };
+
+  const joinWithCode = async () => {
+    if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
+    const code = prompt("Enter Server Invite Code:");
+    if (!code) return;
+    
+    const target = allServers ? allServers.find(s => s.inviteCode === code.trim()) : null;
+    if (!target) return alert("Invalid invite code or server does not exist.");
+    if (target.banned && target.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
+    
+    try {
+      await firestore.collection('servers').doc(target.id).update({ members: firebase.firestore.FieldValue.arrayUnion(auth.currentUser.uid) });
+      setCurrentServer(target); 
+      setView('servers');
+    } catch(e) { 
+      alert("Failed to join."); 
+    }
+  };
+
   return (
     <div className="chat-container" style={{padding: '40px', overflowY: 'auto', background: '#313338'}}>
-      <h1 style={{color: 'white', marginTop: 0, marginBottom: 10}}>🌍 Discover Public Servers</h1>
-      <p style={{color: '#949ba4', marginBottom: 30}}>Find communities, join voice channels, and chat.</p>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '10px'}}>
+        <h1 style={{color: 'white', margin: 0}}>🌍 Discover Public Servers</h1>
+        {!isGuest && <button onClick={joinWithCode} style={{background: theme, color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>🔑 Join via Invite Code</button>}
+      </div>
+      <p style={{color: '#949ba4', marginBottom: 30, marginTop: 0}}>Find communities, join voice channels, and chat.</p>
       <div style={{display: 'flex', flexWrap: 'wrap', gap: '20px'}}>
         {publicServers.map(s => {
           const isMember = auth.currentUser && s.members && s.members.includes(auth.currentUser.uid);
