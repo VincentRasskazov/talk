@@ -638,7 +638,53 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
-  const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [liveMessages, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [displayMessages, setDisplayMessages] = useState([]);
+
+  useEffect(() => {
+    if (channel) {
+      const cacheKey = 'cache_chan_' + channel.id;
+      
+      if (liveMessages && liveMessages.length > 0) {
+        setDisplayMessages(liveMessages);
+        try {
+          // Map to a safe object, strip massive base64 images so we don't blow up the 5MB local limit
+          const safeToCache = liveMessages.map(m => {
+            const mCopy = Object.assign({}, m);
+            if (mCopy.fileData && mCopy.fileData.length > 50000) mCopy.fileData = null; 
+            if (mCopy.createdAt && mCopy.createdAt.toMillis) mCopy.cachedTime = mCopy.createdAt.toMillis();
+            return mCopy;
+          });
+          localStorage.setItem(cacheKey, JSON.stringify(safeToCache));
+        } catch(e) { console.warn("Cache write failed:", e.message); }
+      } else if (msgsLoading || (msgsError && checkQuotaError(msgsError))) {
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            // Re-mock the Timestamp functions required by the UI
+            parsed.forEach(m => {
+              if (m.cachedTime) {
+                m.createdAt = { 
+                  toMillis: function() { return m.cachedTime; },
+                  toDate: function() { return new Date(m.cachedTime); }
+                };
+              }
+            });
+            setDisplayMessages(parsed);
+          } else if (!msgsLoading) {
+            setDisplayMessages([]);
+          }
+        } catch(e) { setDisplayMessages([]); }
+      } else {
+        setDisplayMessages(liveMessages || []);
+      }
+    } else {
+      setDisplayMessages([]);
+    }
+  }, [liveMessages, msgsLoading, msgsError, channel]);
+
+  const messages = displayMessages;
   
   const categories = {};
   if (channels) {
@@ -919,7 +965,51 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [mentionQuery, setMentionQuery] = useState(null);
   const [inCall, setInCall] = useState(false);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
-  const [messages] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [liveMessages, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [displayMessages, setDisplayMessages] = useState([]);
+
+  useEffect(() => {
+    if (activeDM) {
+      const cacheKey = 'cache_dm_' + activeDM.id;
+      
+      if (liveMessages && liveMessages.length > 0) {
+        setDisplayMessages(liveMessages);
+        try {
+          const safeToCache = liveMessages.map(m => {
+            const mCopy = Object.assign({}, m);
+            if (mCopy.fileData && mCopy.fileData.length > 50000) mCopy.fileData = null; 
+            if (mCopy.createdAt && mCopy.createdAt.toMillis) mCopy.cachedTime = mCopy.createdAt.toMillis();
+            return mCopy;
+          });
+          localStorage.setItem(cacheKey, JSON.stringify(safeToCache));
+        } catch(e) { console.warn("Cache write failed:", e.message); }
+      } else if (msgsLoading || (msgsError && checkQuotaError(msgsError))) {
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            parsed.forEach(m => {
+              if (m.cachedTime) {
+                m.createdAt = { 
+                  toMillis: function() { return m.cachedTime; },
+                  toDate: function() { return new Date(m.cachedTime); }
+                };
+              }
+            });
+            setDisplayMessages(parsed);
+          } else if (!msgsLoading) {
+            setDisplayMessages([]);
+          }
+        } catch(e) { setDisplayMessages([]); }
+      } else {
+        setDisplayMessages(liveMessages || []);
+      }
+    } else {
+      setDisplayMessages([]);
+    }
+  }, [liveMessages, msgsLoading, msgsError, activeDM]);
+
+  const messages = displayMessages;
 
   const [lastReadTime, setLastReadTime] = useState(0);
 
