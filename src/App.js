@@ -472,19 +472,24 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const activeIncomingCall = incomingCalls && incomingCalls.length > 0 ? incomingCalls[0] : null;
   const [activeGlobalCall, setActiveGlobalCall] = useState(null);
 
+  const [showAdminServers, setShowAdminServers] = useState(false);
   const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
 
-  let servers = [];
+  let myServers = [];
+  let adminServers = [];
   if (allServers) {
-    servers = allServers.filter(s => {
-      if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return false; 
-      if (isAdmin) return true;
-      if (s.isPublic) return true; 
-      if (isGuest && currentServer && currentServer.id === s.id) return true; // Allow guests to preview via sidebar
-      if (!isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid)) return true;
-      return false;
+    allServers.forEach(s => {
+      if (s.banned && auth.currentUser && s.banned.includes(auth.currentUser.uid)) return; 
+      const isMember = !isGuest && s.members && auth.currentUser && s.members.includes(auth.currentUser.uid);
+      const isPreview = isGuest && currentServer && currentServer.id === s.id;
+      if (isMember || isPreview || s.isPublic) {
+        myServers.push(s);
+      } else if (isAdmin) {
+        adminServers.push(s);
+      }
     });
   }
+  let servers = myServers.concat(showAdminServers ? adminServers : []);
 
   let currentUserData = null;
   if (allUsers && auth.currentUser) currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
@@ -551,7 +556,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
           })}
           {unreadDMs.length > 0 && <div className="divider"></div>}
 
-          {servers.map(s => {
+          {myServers.map(s => {
             const isActive = currentServer && currentServer.id === s.id && view === 'servers';
             const hasImage = s.icon && s.icon.startsWith('data:');
             const isUnread = s.updatedAt && s.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') && !isActive;
@@ -564,7 +569,28 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
               </div>
             )
           })}
-          {!isGuest && <div className="server-icon-wrapper" onClick={async () => { 
+          
+          {isAdmin && adminServers.length > 0 && (
+            <>
+              <div className="divider"></div>
+              <div className="server-icon-wrapper" onClick={() => setShowAdminServers(!showAdminServers)}>
+                <div className="server-icon" style={{background: '#35373c', fontSize: '12px', transition: '0.2s', transform: showAdminServers ? 'rotate(90deg)' : 'none'}} title="Toggle Admin Servers">👁️</div>
+              </div>
+              {showAdminServers && adminServers.map(s => {
+                const isActive = currentServer && currentServer.id === s.id && view === 'servers';
+                const hasImage = s.icon && s.icon.startsWith('data:');
+                return (
+                  <div key={s.id} className={`server-icon-wrapper ${isActive ? 'active' : ''}`} onClick={() => { setView('servers'); setCurrentServer(s); setCurrentChannel(null); setMobileNavOpen(true); }}>
+                    <div className={`server-icon ${isActive ? 'active' : ''}`} style={hasImage ? {backgroundImage: `url(${s.icon})`, border: '2px solid #f0b232'} : {border: '2px solid #f0b232'}} title={`[ADMIN] ${s.name}`}>
+                      {!hasImage ? (s.icon || (s.name ? s.name.charAt(0).toUpperCase() : '?')) : ''}
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+          {!isGuest && <div className="server-icon-wrapper" onClick={async () => {
             const n = prompt("Server Name:"); 
             if(n) {
               const isPriv = !isAdmin;
@@ -595,6 +621,20 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [showMembers, setShowMembers] = useState(false); const [mentionQuery, setMentionQuery] = useState(null);
   const [collapsedCats, setCollapsedCats] = useState({});
+  const [showGif, setShowGif] = useState(false);
+  const [gifSearch, setGifSearch] = useState('');
+  const [gifs, setGifs] = useState([]);
+
+  useEffect(() => {
+    if (showGif) {
+      const q = gifSearch.trim() || 'trending';
+      fetch(`https://api.tenor.com/v1/search?q=${q}&key=LIVDSRZULELA&limit=20&media_filter=minimal&contentfilter=high`)
+        .then(res => res.json())
+        .then(data => { if (data && data.results) setGifs(data.results); })
+        .catch(() => {});
+    }
+  }, [showGif, gifSearch]);
+
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
@@ -790,6 +830,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                         <React.Fragment key={m.id}>
                           {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
                           <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} />
+                        <React.Fragment key={m.id}>
+                          {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
+                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} allUsers={allUsers} />
                         </React.Fragment>
                       );
                     });
@@ -804,12 +847,29 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                     </div>
                   )}
                   {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+                  {showGif && (
+                    <div style={{position: 'absolute', bottom: 'calc(100% + 10px)', right: '16px', background: '#2b2d31', padding: '12px', borderRadius: '8px', border: '1px solid #1e1f22', width: '320px', zIndex: 100, boxShadow: '0 8px 16px rgba(0,0,0,0.5)'}}>
+                      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
+                        <strong style={{color: '#fff'}}>Tenor GIFs</strong>
+                        <button onClick={() => setShowGif(false)} style={{background: 'none', color: '#b5bac1', fontSize: '16px'}}>✕</button>
+                      </div>
+                      <input type="text" value={gifSearch} onChange={e => setGifSearch(e.target.value)} placeholder="Search GIFs..." style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #1e1f22', background: '#1e1f22', color: '#dbdee1', marginBottom: '8px', boxSizing: 'border-box'}} />
+                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '4px', height: '220px', overflowY: 'auto'}}>
+                        {gifs.map(g => {
+                          const url = g && g.media && g.media[0] && g.media[0].tinygif && g.media[0].tinygif.url;
+                          if (!url) return null;
+                          return <img key={g.id} src={url} alt="gif" onClick={() => { setFile({ data: url, type: 'image', name: 'gif.gif' }); setShowGif(false); }} style={{width: 'calc(50% - 2px)', height: '100px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer'}} />
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {isGuest ? <div style={{background:'#2b2d31', padding:16, borderRadius:8, textAlign:'center', marginTop: 8, border: '1px solid #1e1f22'}}><button className="auth-btn" onClick={onLoginClick} style={{background:theme, width:'auto', margin:0}}>Login to Send Messages</button></div> : 
                   <form onSubmit={sendMsg}>
                     <div className="upload-btn">
                       <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
                     </div>
                     <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message #${channel.name} (or Paste Image)`} autoComplete="off" />
+                    <button type="button" onClick={() => setShowGif(!showGif)} style={{background: 'none', color: '#b5bac1', fontWeight: 'bold', padding: '0 12px'}}>GIF</button>
                     <button type="submit" style={{display:'none'}}></button>
                   </form>}
                 </div>
@@ -1037,7 +1097,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   )
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer }) {
+function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
   
@@ -1082,12 +1142,21 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
         else if (el.startsWith('# ')) { isH1 = true; el = el.substring(2); }
         else if (el.startsWith('> ')) { isQuote = true; el = el.substring(2); }
 
-        const tokens = el.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+        const tokens = el.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`|https?:\/\/[^\s]+)/g);
 
         const formattedTokens = tokens.map((tok, j) => {
           if (tok.startsWith('**') && tok.endsWith('**')) return <strong key={j}>{tok.slice(2, -2)}</strong>;
           if (tok.startsWith('*') && tok.endsWith('*')) return <em key={j}>{tok.slice(1, -1)}</em>;
           if (tok.startsWith('`') && tok.endsWith('`')) return <code key={j} style={{background: '#1e1f22', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', color: '#eb459e', fontSize: '0.9em'}}>{tok.slice(1, -1)}</code>;
+          if (tok.match(/^https?:\/\/[^\s]+$/)) {
+            const isImage = tok.match(/\.(jpeg|jpg|gif|png|webp)$/i) || tok.includes('tenor.com');
+            return (
+              <span key={j}>
+                <a href={tok} target="_blank" rel="noreferrer" style={{color: '#00a8fc', textDecoration: 'none'}}>{tok}</a>
+                {isImage && <img src={tok} alt="embed" style={{display: 'block', maxWidth: '300px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid #1e1f22'}} onClick={() => setZoomImage && setZoomImage(tok)} />}
+              </span>
+            );
+          }
           return tok;
         });
 
@@ -1169,11 +1238,17 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
         
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
           <div className="reactions-display">
-            {Object.entries(msg.reactions).map(([em, uids]) => (
-              <div key={em} className={`reaction-pill ${auth.currentUser && uids.includes(auth.currentUser.uid)?'reacted':''}`} onClick={()=>toggleReact(em)} style={auth.currentUser && uids.includes(auth.currentUser.uid) ? {borderColor:theme, color:theme} : {}}>
-                {em} <span>{uids.length}</span>
-              </div>
-            ))}
+            {Object.entries(msg.reactions).map(([em, uids]) => {
+              const reactedNames = uids.map(uid => {
+                const u = allUsers ? allUsers.find(user => user.uid === uid) : null;
+                return u && u.displayName ? u.displayName : 'Someone';
+              }).join(', ');
+              return (
+                <div key={em} title={reactedNames} className={`reaction-pill ${auth.currentUser && uids.includes(auth.currentUser.uid)?'reacted':''}`} onClick={()=>toggleReact(em)} style={auth.currentUser && uids.includes(auth.currentUser.uid) ? {borderColor:theme, color:theme} : {}}>
+                  {em} <span>{uids.length}</span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
