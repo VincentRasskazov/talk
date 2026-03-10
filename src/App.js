@@ -149,11 +149,11 @@ const EmptyServerState = () => (
   </div>
 );
 
-const EmptyChannelState = () => (
+const EmptyChannelState = ({ emptyServer }) => (
   <div className="empty-state">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
-    <h2>No Channel Selected</h2>
-    <p>Select a text channel from the menu to see messages and participate in the conversation.</p>
+    <h2>{emptyServer ? 'No Channels Yet' : 'No Channel Selected'}</h2>
+    <p>{emptyServer ? 'This server has no channels. An admin needs to create one before you can chat.' : 'Select a text channel from the menu to see messages and participate in the conversation.'}</p>
   </div>
 );
 
@@ -669,7 +669,15 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     return () => clearTimeout(timer);
   }, [messages, channel, server]);
 
-  useEffect(() => { if (channels && channels.length > 0 && (!channel || !channels.find(c=>c.id===channel.id))) setChannel(channels[0]); }, [channels, server]);
+  useEffect(() => { 
+    if (channels) {
+      if (channels.length === 0 && channel !== null) {
+        setChannel(null);
+      } else if (channels.length > 0 && (!channel || !channels.find(c => c.id === channel.id))) {
+        setChannel(channels[0]);
+      }
+    }
+  }, [channels, server, channel, setChannel]);
 
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
   const canManage = isAdmin || (server.owner && auth.currentUser && server.owner === auth.currentUser.uid) || (server.admins && auth.currentUser && server.admins.includes(auth.currentUser.uid));
@@ -875,7 +883,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
               </>
             )}
           </>
-        ) : <EmptyChannelState />}
+        ) : <EmptyChannelState emptyServer={channels && channels.length === 0} />}
       </div>
 
       {showMembers && <div className="mobile-overlay open" onClick={()=>setShowMembers(false)} style={{zIndex: 104}}></div>}
@@ -1147,12 +1155,13 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
           if (tok.startsWith('**') && tok.endsWith('**')) return <strong key={j}>{tok.slice(2, -2)}</strong>;
           if (tok.startsWith('*') && tok.endsWith('*')) return <em key={j}>{tok.slice(1, -1)}</em>;
           if (tok.startsWith('`') && tok.endsWith('`')) return <code key={j} style={{background: '#1e1f22', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', color: '#eb459e', fontSize: '0.9em'}}>{tok.slice(1, -1)}</code>;
-          if (tok.match(/^https?:\/\/[^\s]+$/)) {
-            const isImage = tok.match(/\.(jpeg|jpg|gif|png|webp)$/i) || tok.includes('tenor.com');
+          
+          if (tok.startsWith('http://') || tok.startsWith('https://')) {
+            const isImage = tok.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) || tok.includes('tenor.com');
             return (
               <span key={j}>
-                <a href={tok} target="_blank" rel="noreferrer" style={{color: '#00a8fc', textDecoration: 'none'}}>{tok}</a>
-                {isImage && <img src={tok} alt="embed" style={{display: 'block', maxWidth: '300px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid #1e1f22'}} onClick={() => setZoomImage && setZoomImage(tok)} />}
+                <a href={tok} target="_blank" rel="noreferrer" style={{color: '#00a8fc', textDecoration: 'underline'}}>{tok}</a>
+                {isImage && <img src={tok} alt="embed" style={{display: 'block', maxWidth: '300px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid #1e1f22'}} onClick={(e) => { e.stopPropagation(); if (setZoomImage) setZoomImage(tok); }} />}
               </span>
             );
           }
