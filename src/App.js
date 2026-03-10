@@ -827,14 +827,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       const showDivider = !dividerRendered && lastReadTime > 0 && msgTime > lastReadTime;
                       if (showDivider) dividerRendered = true;
                       return (
-                        <main>
-                  {messages && (() => {
-                    let dividerRendered = false;
-                    return messages.map((m) => {
-                      const msgTime = m.createdAt && m.createdAt.toMillis ? m.createdAt.toMillis() : Date.now();
-                      const showDivider = !dividerRendered && lastReadTime > 0 && msgTime > lastReadTime;
-                      if (showDivider) dividerRendered = true;
-                      return (
                         <React.Fragment key={m.id}>
                           {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
                           <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} allUsers={allUsers} />
