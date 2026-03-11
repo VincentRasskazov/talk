@@ -608,7 +608,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
         ) : view === 'servers' && currentServer ? (
           <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} editServer={() => setEditingServer(currentServer)} />
         ) : view === 'dms' && !isGuest ? (
-          <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} />
+          <DMContent dms={allDMs} activeDM={activeDM} setActiveDM={setActiveDM} allUsers={allUsers} theme={themeColor} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} myData={currentUserData} openSettings={()=>setShowSettings(true)} openProfile={setSelectedUser} setZoomImage={setZoomImage} isAdmin={isAdmin} />
         ) : (
           <EmptyServerState />
         )}
@@ -745,9 +745,17 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if (msgsRef && auth.currentUser) {
       try {
         await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        await firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-        await firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-        setForm(''); setFile(null); 
+        
+        // OPTIMIZATION: Throttle directory writes. Only update unread trackers once every 30 seconds per channel.
+        window._lastWrite = window._lastWrite || {};
+        const now = Date.now();
+        if (!window._lastWrite[channel.id] || now - window._lastWrite[channel.id] > 30000) {
+          window._lastWrite[channel.id] = now;
+          firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+          firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        }
+        
+        setForm(''); setFile(null);
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
@@ -883,7 +891,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       return (
                         <React.Fragment key={m.id}>
                           {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
-                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} allUsers={allUsers} />
+                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} />
                         </React.Fragment>
                       );
                     });
@@ -960,7 +968,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   )
 }
 
-function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage }) {
+function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen, setMobileNavOpen, closeAllMenus, channelsOpenPC, setChannelsOpenPC, myData, openSettings, openProfile, setZoomImage, isAdmin }) {
   const dummy = useRef(); const [form, setForm] = useState(''); const [file, setFile] = useState(null);
   const [mentionQuery, setMentionQuery] = useState(null);
   const [inCall, setInCall] = useState(false);
@@ -1045,8 +1053,15 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     if (msgsRef && auth.currentUser) {
       try {
         await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        await firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-        setForm(''); setFile(null); 
+        
+        window._lastWrite = window._lastWrite || {};
+        const now = Date.now();
+        if (!window._lastWrite[activeDM.id] || now - window._lastWrite[activeDM.id] > 30000) {
+          window._lastWrite[activeDM.id] = now;
+          firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        }
+        
+        setForm(''); setFile(null);
         
         if (activeDM && activeDM.target && activeDM.target.fcmToken) {
            fetch(`${BACKEND_URL}/notify`, {
@@ -1198,9 +1213,10 @@ function UrlEmbed({ url, setZoomImage }) {
   const [data, setData] = useState(null);
   
   const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) || url.includes('tenor.com');
+  const isPerfMode = localStorage.getItem('performanceMode') === 'true';
 
   useEffect(() => {
-    if (!isImage) {
+    if (!isImage && !isPerfMode) {
       fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`)
         .then(res => res.json())
         .then(json => {
@@ -1695,15 +1711,26 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                 <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Customize how the app feels on your device.</p>
                 
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
-                  <strong style={{color:'#dbdee1', fontSize:14}}>Compact Message Mode</strong>
-                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('compactMode') === 'true'} onChange={(e) => {
-                    localStorage.setItem('compactMode', e.target.checked);
-                    if(e.target.checked) document.body.classList.add('compact-mode');
-                    else document.body.classList.remove('compact-mode');
+                  <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Terminal UI)</strong>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
+                    localStorage.setItem('monoFont', e.target.checked);
+                    if(e.target.checked) document.body.classList.add('hacker-mode');
+                    else document.body.classList.remove('hacker-mode');
                   }} />
                 </div>
 
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginBottom: 8}}>
+                  <div style={{display: 'flex', flexDirection: 'column'}}>
+                    <strong style={{color:'#f0b232', fontSize:14}}>Performance Mode</strong>
+                    <span style={{color: '#80848e', fontSize: 11}}>Reduces RAM/CPU usage by disabling heavy URL embeds</span>
+                  </div>
+                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('performanceMode') === 'true'} onChange={(e) => {
+                    localStorage.setItem('performanceMode', e.target.checked);
+                    window.location.reload(); 
+                  }} />
+                </div>
+
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
                   <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Terminal UI)</strong>
                   <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
                     localStorage.setItem('monoFont', e.target.checked);
