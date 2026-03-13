@@ -181,7 +181,14 @@ export default function App() {
 
   useEffect(() => {
     if (!user || userLoading) return;
-    if (userDoc && userDoc.banned) return;
+    if (localStorage.getItem('device_banned') === 'true' && userDoc && !userDoc.banned) {
+      firestore.collection('users').doc(user.uid).update({ banned: true }).catch(()=>{});
+      return;
+    }
+    if (userDoc && userDoc.banned) {
+      localStorage.setItem('device_banned', 'true');
+      return;
+    }
     // Only set initial data if the Firestore document doesn't exist yet!
     if (!userDoc || !userDoc.uid) {
       firestore.collection('users').doc(user.uid).set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
@@ -500,6 +507,16 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 
   const unreadDMs = allDMs ? allDMs.filter(dm => dm.updatedAt && dm.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') && (!activeDM || activeDM.id !== dm.id)) : [];
 
+  useEffect(() => {
+    let unreadCount = unreadDMs.length;
+    myServers.forEach(s => {
+      if (s.updatedAt && s.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') && (!currentServer || currentServer.id !== s.id)) {
+        unreadCount++;
+      }
+    });
+    document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
+  }, [unreadDMs, myServers, currentServer]);
+
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
     const uid1 = auth.currentUser.uid; 
@@ -638,8 +655,12 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const channelsRef = firestore.collection(`servers/${server.id}/channels`);
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
-  const [liveMessages, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  
+  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
+  const liveMessages = liveMessagesRaw ? [...liveMessagesRaw].reverse() : [];
+  
   const [displayMessages, setDisplayMessages] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
 
   useEffect(() => {
     if (channel) {
@@ -731,12 +752,35 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const sendMsg = async (e) => {
     e.preventDefault(); if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
+    const text = form.trim();
+
+    if (text.startsWith('/clear ') && canManage) {
+      const count = parseInt(text.split(' ')[1]);
+      if (count && count > 0 && count <= 50) {
+        try {
+          const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
+          const batch = firestore.batch();
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          setForm('');
+        } catch(err) { alert("Clear failed: Quota Exceeded."); }
+        return;
+      }
+    }
 
     const recentSends = JSON.parse(localStorage.getItem('spam_filter') || '[]').filter(t => Date.now() - t < 10000);
-    if (recentSends.length >= 5) return alert("⏳ Slow down! Advanced rate limit active. Try again in 10 seconds.");
+    if (recentSends.length >= 5) {
+      let strikes = parseInt(localStorage.getItem('spam_strikes') || '0') + 1;
+      localStorage.setItem('spam_strikes', strikes.toString());
+      if (strikes >= 3) {
+        localStorage.setItem('device_banned', 'true');
+        firestore.collection('users').doc(auth.currentUser.uid).update({ banned: true }).catch(()=>{});
+        return alert("You have been permanently banned for severe spamming.");
+      }
+      return alert(`⏳ Slow down! Spam warning ${strikes}/3. You will be banned at 3 strikes.`);
+    }
     localStorage.setItem('spam_filter', JSON.stringify([...recentSends, Date.now()]));
 
-    const text = form.trim();
     let aiModel = null; let triggerUsed = null; let aiPrompt = null;
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
       if (text.toLowerCase().startsWith(trigger + ' ')) { aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break; }
@@ -744,9 +788,14 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
+        let finalMsg = text;
+        if (replyingTo) {
+          finalMsg = `> **Replying to ${replyingTo.displayName}:** *${replyingTo.text ? replyingTo.text.substring(0, 40).replace(/\n/g, ' ') : 'Attachment'}...*\n` + text;
+          setReplyingTo(null);
+        }
+
+        await msgsRef.add({ text: finalMsg, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
         
-        // OPTIMIZATION: Throttle directory writes. Only update unread trackers once every 30 seconds per channel.
         window._lastWrite = window._lastWrite || {};
         const now = Date.now();
         if (!window._lastWrite[channel.id] || now - window._lastWrite[channel.id] > 30000) {
@@ -759,7 +808,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
-          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction.Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
+          const aiContext = `System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. You are talking to a user named ${myData ? myData.displayName : 'User'}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
+          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: aiContext + aiPrompt, model: aiModel }) });
           if (!response.ok) throw new Error("AI failed");
           const aiResult = await response.text();
           await msgsRef.add({ text: aiResult, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
@@ -891,7 +941,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       return (
                         <React.Fragment key={m.id}>
                           {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
-                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} />
+                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={canManage} isGuest={isGuest} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find(u => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} currentServer={server} allUsers={allUsers} setReplyingTo={setReplyingTo} />
                         </React.Fragment>
                       );
                     });
@@ -929,7 +979,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                     <div className="upload-btn">
                       <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
                     </div>
-                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message #${channel.name} (or Paste Image)`} autoComplete="off" />
+                    {replyingTo && <div style={{position: 'absolute', top: '-28px', left: '16px', background: '#2b2d31', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', color: '#b5bac1', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #1e1f22', zIndex: 5}}>Replying to <strong style={{color: '#fff'}}>{replyingTo.displayName}</strong> <button type="button" style={{background: 'none', color: '#da373c', fontSize: '14px', padding: 0}} onClick={()=>setReplyingTo(null)}>✕</button></div>}
+                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message #${channel.name} (or Paste Image)`} autoComplete="off" maxLength={5000} />
                     <button type="button" onClick={() => setShowGif(!showGif)} style={{background: 'none', color: '#b5bac1', fontWeight: 'bold', padding: '0 12px'}}>GIF</button>
                     <button type="submit" style={{display:'none'}}></button>
                   </form>}
@@ -973,8 +1024,10 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [mentionQuery, setMentionQuery] = useState(null);
   const [inCall, setInCall] = useState(false);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
-  const [liveMessages, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt').limit(50) : null, { idField: 'id' });
+  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
+  const liveMessages = liveMessagesRaw ? [...liveMessagesRaw].reverse() : [];
   const [displayMessages, setDisplayMessages] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
 
   useEffect(() => {
     if (activeDM) {
@@ -1040,19 +1093,49 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
 
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
+    const text = form.trim();
+
+    if (text.startsWith('/clear ') && isAdmin) {
+      const count = parseInt(text.split(' ')[1]);
+      if (count && count > 0 && count <= 50) {
+        try {
+          const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
+          const batch = firestore.batch();
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          setForm('');
+        } catch(err) { alert("Clear failed."); }
+        return;
+      }
+    }
 
     const recentSends = JSON.parse(localStorage.getItem('spam_filter') || '[]').filter(t => Date.now() - t < 10000);
-    if (recentSends.length >= 5) return alert("⏳ Slow down! Advanced rate limit active. Try again in 10 seconds.");
+    if (recentSends.length >= 5) {
+      let strikes = parseInt(localStorage.getItem('spam_strikes') || '0') + 1;
+      localStorage.setItem('spam_strikes', strikes.toString());
+      if (strikes >= 3) {
+        localStorage.setItem('device_banned', 'true');
+        firestore.collection('users').doc(auth.currentUser.uid).update({ banned: true }).catch(()=>{});
+        return alert("You have been permanently banned for severe spamming.");
+      }
+      return alert(`⏳ Slow down! Spam warning ${strikes}/3. You will be banned at 3 strikes.`);
+    }
     localStorage.setItem('spam_filter', JSON.stringify([...recentSends, Date.now()]));
 
-    const text = form.trim(); let aiModel = null; let triggerUsed = null; let aiPrompt = null;
+    let aiModel = null; let triggerUsed = null; let aiPrompt = null;
     for (const [trigger, modelId] of Object.entries(AI_MODELS)) {
       if (text.toLowerCase().startsWith(trigger + ' ')) { aiModel = modelId; triggerUsed = trigger; aiPrompt = text.substring(trigger.length).trim(); break; }
     }
 
     if (msgsRef && auth.currentUser) {
       try {
-        await msgsRef.add({ text: text, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
+        let finalMsg = text;
+        if (replyingTo) {
+          finalMsg = `> **Replying to ${replyingTo.displayName}:** *${replyingTo.text ? replyingTo.text.substring(0, 40).replace(/\n/g, ' ') : 'Attachment'}...*\n` + text;
+          setReplyingTo(null);
+        }
+
+        await msgsRef.add({ text: finalMsg, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
         
         window._lastWrite = window._lastWrite || {};
         const now = Date.now();
@@ -1061,23 +1144,20 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
           firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
         }
         
-        setForm(''); setFile(null);
+        setForm(''); setFile(null); 
         
         if (activeDM && activeDM.target && activeDM.target.fcmToken) {
            fetch(`${BACKEND_URL}/notify`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({
-               fcmToken: activeDM.target.fcmToken,
-               title: `New DM from ${myData ? myData.displayName : 'User'}`,
-               body: text ? text : (file ? 'Sent an attachment' : 'New message')
-             })
+             body: JSON.stringify({ fcmToken: activeDM.target.fcmToken, title: `New DM from ${myData ? myData.displayName : 'User'}`, body: text ? text : (file ? 'Sent an attachment' : 'New message') })
            }).catch(err => console.warn("Push failed:", err));
         }
 
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
-          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: "System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction.Be helpful, concise, and friendly.\n\nUser: " + aiPrompt, model: aiModel }) });
+          const aiContext = `System: You are VincentAI. You are talking to a user named ${myData ? myData.displayName : 'User'}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
+          const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: aiContext + aiPrompt, model: aiModel }) });
           if (!response.ok) throw new Error("AI failed to respond.");
           await msgsRef.add({ text: await response.text(), createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
         }
@@ -1176,29 +1256,30 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                   if (showDivider) dividerRendered = true;
                   return (
                     <React.Fragment key={m.id}>
-                      {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
-                      <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} />
-                    </React.Fragment>
-                  );
-                });
-              })()}
-              <span ref={dummy}></span>
-            </main>
-            <div className="form-wrapper">
-              {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
-                <div className="mention-menu">
-                  {aiMatches.map(ai => <div key={ai} className="mention-item" onClick={() => insertMention(ai)}><span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span></div>)}
-                  {userMatches.map(u => <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}><img src={u.photoURL || DEFAULT_AVATAR} alt="user" /><span>{u.displayName}</span></div>)}
-                </div>
-              )}
-              {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
-              <form onSubmit={sendMsg}>
-                <div className="upload-btn">
-                  <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
-                    + <input type="file" style={{display:'none'}} onChange={handleFile} />
-                  </label>
-                </div>
-                <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={`Message @${activeDM.target.displayName} (or Paste Image)`} autoComplete="off" />
+                          {showDivider && <div style={{display: 'flex', alignItems: 'center', margin: '16px 16px 0 16px', color: '#da373c', fontSize: '12px', fontWeight: 'bold'}}><div style={{flex: 1, height: 1, background: '#da373c', marginRight: 8}}></div>NEW MESSAGES<div style={{flex: 1, height: 1, background: '#da373c', marginLeft: 8}}></div></div>}
+                          <ChatMessage msg={m} msgRef={msgsRef.doc(m.id)} isAdmin={isAdmin} canManage={false} isGuest={false} theme={theme} openProfile={() => openProfile(allUsers ? allUsers.find((u) => u.uid === m.uid) || m : m)} setZoomImage={setZoomImage} serverAdmins={[]} allUsers={allUsers} setReplyingTo={setReplyingTo} />
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
+                  <span ref={dummy}></span>
+                </main>
+                <div className="form-wrapper">
+                  {mentionQuery !== null && (aiMatches.length > 0 || userMatches.length > 0) && (
+                    <div className="mention-menu">
+                      {aiMatches.map(ai => <div key={ai} className="mention-item" onClick={() => insertMention(ai)}><span style={{color: '#f0b232', fontWeight: 'bold'}}>🤖 {ai}</span></div>)}
+                      {userMatches.map(u => <div key={u.uid} className="mention-item" onClick={() => insertMention(`@${u.displayName}`)}><img src={u.photoURL || DEFAULT_AVATAR} alt="user" /><span>{u.displayName}</span></div>)}
+                    </div>
+                  )}
+                  {file && <div className="file-preview">{file.type==='image'?<img src={file.data} alt="prv"/>:<span>📎 {file.name}</span>}<button onClick={()=>setFile(null)}>✕</button></div>}
+                  <form onSubmit={sendMsg}>
+                    <div className="upload-btn">
+                      <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>
+                        + <input type="file" style={{display:'none'}} onChange={handleFile} />
+                      </label>
+                    </div>
+                    {replyingTo && <div style={{position: 'absolute', top: '-28px', left: '16px', background: '#2b2d31', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', color: '#b5bac1', display: 'flex', gap: '8px', border: '1px solid #1e1f22', zIndex: 5}}>Replying to <strong style={{color: '#fff'}}>{replyingTo.displayName}</strong> <button type="button" style={{background: 'none', color: '#da373c', fontSize: '14px', padding: 0}} onClick={()=>setReplyingTo(null)}>✕</button></div>}
+                    <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message @${activeDM.target.displayName} (or Paste Image)`} autoComplete="off" maxLength={5000} />
                 <button type="submit" style={{display:'none'}}></button>
               </form>
             </div>
@@ -1248,8 +1329,7 @@ function UrlEmbed({ url, setZoomImage }) {
   return null;
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers }) {
-  const [isEditing, setIsEditing] = useState(false);
+function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers, setReplyingTo }) {  const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
   
   const serverOwner = currentServer ? currentServer.owner : null;
@@ -1418,6 +1498,7 @@ function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProf
         return (
           <div className="msg-hover-actions">
             {EMOJI_LIST.map(em => <button key={em} className="react-btn" onClick={()=>toggleReact(em)}>{em}</button>)}
+            {setReplyingTo && <button onClick={() => setReplyingTo(msg)} style={{background:'none', color:'#b5bac1', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>REPLY</button>}
             {isMyMsg ? <button onClick={() => setIsEditing(true)} style={{background:'none', color:'#b5bac1', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>EDIT</button> : null}
             {canDelete ? <button onClick={()=>msgRef.delete()} style={{background:'none', color:'#da373c', fontSize:11, fontWeight: 'bold', marginLeft: 8}}>DEL</button> : null}
           </div>
@@ -1437,6 +1518,9 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
   const [roles, setRoles] = useState(server.roles || []);
+  
+  // Create a persistent invite code when the modal opens if one doesn't exist
+  const [inviteCode] = useState(server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase());
 
   const isOwner = auth.currentUser && server.owner === auth.currentUser.uid;
   const bannedUsers = allUsers ? allUsers.filter(u => server.banned && server.banned.includes(u.uid)) : [];
@@ -1459,11 +1543,11 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
 
   const save = async () => {
     if (auth.currentUser) {
-      const inviteCode = !isPublic ? (server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase()) : null;
+      const finalInviteCode = !isPublic ? inviteCode : null;
       let members = server.members || [];
       if (!isPublic && members.length === 0) members = [auth.currentUser.uid];
       try {
-        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPublic, isDiscoverable, inviteCode, members, roles }); 
+        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPublic, isDiscoverable, inviteCode: finalInviteCode, members, roles }); 
         close(); 
       } catch (err) {
         if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
@@ -1518,7 +1602,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
                 </div>
               )}
               
-              {!isPublic && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{server.inviteCode||'Save to generate'}</div>}
+              {!isPublic && (isOwner || isAdmin) && <div style={{background:'#1e1f22', padding:16, borderRadius:8, textAlign:'center', color:'#23a559', fontSize:28, letterSpacing:6, fontWeight:'900', fontFamily:'monospace', marginTop: 16, border: '1px dashed #23a559'}}>{inviteCode}</div>}
               
               <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16}}>
                 <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Mute Notifications</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Stop desktop alerts for this server</span></div>
