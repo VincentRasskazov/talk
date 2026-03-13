@@ -181,14 +181,22 @@ export default function App() {
 
   useEffect(() => {
     if (!user || userLoading) return;
-    if (localStorage.getItem('device_banned') === 'true' && userDoc && !userDoc.banned) {
-      firestore.collection('users').doc(user.uid).update({ banned: true }).catch(()=>{});
-      return;
-    }
-    if (userDoc && userDoc.banned) {
+    
+    if (localStorage.getItem('device_banned') === 'true') {
+      if (userDoc && userDoc.banned === false) {
+        // Admin explicitly pardoned this account! Lift the device ban.
+        localStorage.removeItem('device_banned');
+        localStorage.setItem('spam_strikes', '0');
+      } else if (userDoc && userDoc.banned !== false) {
+        // New alt account or still banned. Enforce the lock.
+        if (!userDoc.banned) firestore.collection('users').doc(user.uid).update({ banned: true }).catch(()=>{});
+        return;
+      }
+    } else if (userDoc && userDoc.banned) {
       localStorage.setItem('device_banned', 'true');
       return;
     }
+    
     // Only set initial data if the Firestore document doesn't exist yet!
     if (!userDoc || !userDoc.uid) {
       firestore.collection('users').doc(user.uid).set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
@@ -505,17 +513,26 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
   }, [servers, currentServer, view]);
 
-  const unreadDMs = allDMs ? allDMs.filter(dm => dm.updatedAt && dm.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') && (!activeDM || activeDM.id !== dm.id)) : [];
+  const unreadDMs = allDMs ? allDMs.filter(dm => {
+    const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
+    if (isActive || !dm.updatedAt) return false;
+    const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : Date.now();
+    return time > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0');
+  }) : [];
 
   useEffect(() => {
     let unreadCount = unreadDMs.length;
     myServers.forEach(s => {
-      if (s.updatedAt && s.updatedAt.toMillis() > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') && (!currentServer || currentServer.id !== s.id)) {
-        unreadCount++;
+      const isActive = currentServer && currentServer.id === s.id && view === 'servers';
+      if (!isActive && s.updatedAt) {
+        const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : Date.now();
+        if (time > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0')) {
+          unreadCount++;
+        }
       }
     });
     document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
-  }, [unreadDMs, myServers, currentServer]);
+  }, [unreadDMs.length, myServers, currentServer, view]);
 
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
@@ -1687,6 +1704,9 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
   const [pronouns, setPronouns] = useState((userDoc && userDoc.pronouns) || '');
   const [photo, setPhoto] = useState((userDoc && userDoc.photoURL) || DEFAULT_AVATAR);
   const [bannerURL, setBannerURL] = useState((userDoc && userDoc.bannerURL) || '');
+  
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbacks] = useCollectionData(isAdmin ? firestore.collection('feedback').orderBy('createdAt', 'desc').limit(20) : null, { idField: 'id' });
 
   const save = async () => { 
     if (auth.currentUser) {
@@ -1718,9 +1738,10 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
             <h4>User Settings</h4>
             <div className={`settings-tab ${tab === 'acc' ? 'active' : ''}`} onClick={()=>setTab('acc')}>My Account</div>
             <div className={`settings-tab ${tab === 'profile' ? 'active' : ''}`} onClick={()=>setTab('profile')}>Profiles</div>
-            <div className={`settings-tab ${tab === 'app' ? 'active' : ''}`} onClick={()=>setTab('app')}>App Settings</div>
-            {isAdmin && <div className={`settings-tab ${tab === 'admin' ? 'active' : ''}`} onClick={()=>setTab('admin')} style={{color: '#f0b232'}}>Admin Panel</div>}
-            <div className="settings-divider"></div>
+              <div className={`settings-tab ${tab === 'app' ? 'active' : ''}`} onClick={()=>setTab('app')}>App Settings</div>
+              <div className={`settings-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={()=>setTab('feedback')}>Feedback</div>
+              {isAdmin && <div className={`settings-tab ${tab === 'admin' ? 'active' : ''}`} onClick={()=>setTab('admin')} style={{color: '#f0b232'}}>Admin Panel</div>}
+              <div className="settings-divider"></div>
             <div className="settings-tab logout" onClick={() => auth.signOut()} style={{color: '#da373c'}}>Log Out</div>
           </div>
         </div>
@@ -1959,13 +1980,57 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                   </div>
                 ))}
               </div>
+
+              <div className="settings-card">
+                <h3 style={{color: '#da373c', margin: 0}}>User Feedback</h3>
+                <p style={{fontSize: 13, color: '#949ba4', marginTop: 4, marginBottom: 16}}>Feature requests and bug reports from users.</p>
+                {feedbacks && feedbacks.map(f => (
+                  <div key={f.id} style={{background: '#1e1f22', padding: '12px', borderRadius: '8px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.05)'}}>
+                    <strong style={{color: '#00a8fc', fontSize: 13}}>{f.displayName}</strong> <span style={{color: '#80848e', fontSize: 11}}>({formatTimestamp(f.createdAt)})</span>
+                    <div style={{color: '#dbdee1', fontSize: 14, marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: '1.4'}}>{f.text}</div>
+                    <button onClick={() => firestore.collection('feedback').doc(f.id).delete()} style={{background: 'none', color: '#da373c', fontSize: 11, padding: 0, marginTop: 12, fontWeight: 'bold'}}>DELETE</button>
+                  </div>
+                ))}
+                {(!feedbacks || feedbacks.length === 0) && <div style={{color: '#80848e', fontSize: 13, fontStyle: 'italic'}}>No feedback received yet.</div>}
+              </div>
             </>
           )}
+
+          {tab === 'feedback' && (
+            <>
+              <h2 style={{color: '#fff', marginTop: 0}}>Submit Feedback</h2>
+              <div className="settings-card">
+                <h3 style={{color:'#fff', margin: 0}}>Got a suggestion or found a bug?</h3>
+                <p style={{color:'#949ba4', fontSize: 13, marginTop: 4, marginBottom: 16}}>Let the developer know so they can improve the platform.</p>
+                <textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} rows={5} placeholder="Type your feedback, feature request, or bug report here..." style={{resize: 'none'}} />
+                <button className="save-btn" onClick={async () => {
+                  if (!feedbackText.trim() || !auth.currentUser) return;
+                  try {
+                    await firestore.collection('feedback').add({
+                      uid: auth.currentUser.uid,
+                      displayName: userDoc ? userDoc.displayName : 'Unknown User',
+                      text: feedbackText.trim(),
+                      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    setFeedbackText('');
+                    alert('Feedback sent successfully! Thank you.');
+                  } catch (e) { 
+                    if(checkQuotaError(e)) alert("Failed to send: Daily Quota Exceeded.");
+                    else alert('Error: ' + e.message); 
+                  }
+                }} style={{background:theme, marginTop: 16, width: 'fit-content'}}>Send Feedback</button>
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     </div>
   )
 }
+
+
+// --- WEBRTC VIDEO ENGINE ---
 
 
 // --- WEBRTC VIDEO ENGINE ---
