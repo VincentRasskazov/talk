@@ -866,7 +866,10 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value; setForm(val); const lastWord = val.split(' ').pop();
+    const val = e.target.value; 
+    if (val.length > 5000) return; // Physically stops the text box from accepting more text
+    setForm(val); 
+    const lastWord = val.split(' ').pop();
     if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
   };
 
@@ -1207,7 +1210,10 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value; setForm(val); const lastWord = val.split(' ').pop();
+    const val = e.target.value; 
+    if (val.length > 5000) return; // Physically stops the text box from accepting more text
+    setForm(val); 
+    const lastWord = val.split(' ').pop();
     if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
   };
 
