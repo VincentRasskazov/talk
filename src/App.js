@@ -517,7 +517,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
     if (isActive || !dm.updatedAt) return false;
     const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : Date.now();
-    return time > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0');
+    // Add 5000ms buffer to negate Client/Server clock skew (Fixes the Phantom 1)
+    return time > (parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') + 5000);
   }) : [];
 
   useEffect(() => {
@@ -526,14 +527,27 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       const isActive = currentServer && currentServer.id === s.id && view === 'servers';
       if (!isActive && s.updatedAt) {
         const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : Date.now();
-        if (time > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0')) {
+        if (time > (parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') + 5000)) {
           unreadCount++;
         }
       }
     });
+    
     document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
-  }, [unreadDMs.length, myServers, currentServer, view]);
 
+    // Native HTML5 In-App Notification Engine
+    if (unreadCount > (window._prevUnread || 0)) {
+      if (Notification.permission === "granted" && document.hidden) {
+        new Notification("New Message on Talk", { icon: DEFAULT_AVATAR, body: "You have unread activity." });
+      }
+      try {
+        const audio = new Audio('https://actions.google.com/sounds/v1/alarms/message_alert_tone.ogg');
+        audio.volume = 0.4;
+        audio.play().catch(()=>{});
+      } catch(e) {}
+    }
+    window._prevUnread = unreadCount;
+  }, [unreadDMs.length, myServers, currentServer, view]);
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
     const uid1 = auth.currentUser.uid; 
@@ -766,7 +780,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const sendMsg = async (e) => {
     e.preventDefault(); if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
-    const text = form.trim();
+    
+    // Hard clamp to exactly 5000 characters server-side before sending
+    const text = form.trim().substring(0, 5000);
 
     if (text.startsWith('/clear ') && canManage) {
       const count = parseInt(text.split(' ')[1]);
@@ -810,9 +826,10 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
         await msgsRef.add({ text: finalMsg, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
         
+        // EXTREME OPTIMIZATION: Throttle directory updates to once per 60 seconds
         window._lastWrite = window._lastWrite || {};
         const now = Date.now();
-        if (!window._lastWrite[channel.id] || now - window._lastWrite[channel.id] > 30000) {
+        if (!window._lastWrite[channel.id] || now - window._lastWrite[channel.id] > 60000) {
           window._lastWrite[channel.id] = now;
           firestore.collection('servers').doc(server.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
           firestore.collection(`servers/${server.id}/channels`).doc(channel.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
@@ -1107,7 +1124,9 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
 
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
-    const text = form.trim();
+    
+    // Hard clamp to exactly 5000 characters
+    const text = form.trim().substring(0, 5000);
 
     if (text.startsWith('/clear ') && isAdmin) {
       const count = parseInt(text.split(' ')[1]);
@@ -1153,7 +1172,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
         
         window._lastWrite = window._lastWrite || {};
         const now = Date.now();
-        if (!window._lastWrite[activeDM.id] || now - window._lastWrite[activeDM.id] > 30000) {
+        if (!window._lastWrite[activeDM.id] || now - window._lastWrite[activeDM.id] > 60000) {
           window._lastWrite[activeDM.id] = now;
           firestore.collection('dms').doc(activeDM.id).update({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
         }
