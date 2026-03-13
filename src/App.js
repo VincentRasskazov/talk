@@ -657,8 +657,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
   
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
-  const liveMessages = liveMessagesRaw ? [...liveMessagesRaw].reverse() : [];
-  
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
@@ -666,11 +664,11 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if (channel) {
       const cacheKey = 'cache_chan_' + channel.id;
       
-      if (liveMessages && liveMessages.length > 0) {
-        setDisplayMessages(liveMessages);
+      if (liveMessagesRaw && liveMessagesRaw.length > 0) {
+        const reversedMessages = [...liveMessagesRaw].reverse();
+        setDisplayMessages(reversedMessages);
         try {
-          // Map to a safe object, strip massive base64 images so we don't blow up the 5MB local limit
-          const safeToCache = liveMessages.map(m => {
+          const safeToCache = reversedMessages.map(m => {
             const mCopy = Object.assign({}, m);
             if (mCopy.fileData && mCopy.fileData.length > 50000) mCopy.fileData = null; 
             if (mCopy.createdAt && mCopy.createdAt.toMillis) mCopy.cachedTime = mCopy.createdAt.toMillis();
@@ -683,7 +681,6 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           const cached = localStorage.getItem(cacheKey);
           if (cached) {
             const parsed = JSON.parse(cached);
-            // Re-mock the Timestamp functions required by the UI
             parsed.forEach(m => {
               if (m.cachedTime) {
                 m.createdAt = { 
@@ -698,12 +695,12 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           }
         } catch(e) { setDisplayMessages([]); }
       } else {
-        setDisplayMessages(liveMessages || []);
+        setDisplayMessages(liveMessagesRaw ? [...liveMessagesRaw].reverse() : []);
       }
     } else {
       setDisplayMessages([]);
     }
-  }, [liveMessages, msgsLoading, msgsError, channel]);
+  }, [liveMessagesRaw, msgsLoading, msgsError, channel]);
 
   const messages = displayMessages;
   
@@ -1025,7 +1022,6 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [inCall, setInCall] = useState(false);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
-  const liveMessages = liveMessagesRaw ? [...liveMessagesRaw].reverse() : [];
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
@@ -1033,10 +1029,11 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     if (activeDM) {
       const cacheKey = 'cache_dm_' + activeDM.id;
       
-      if (liveMessages && liveMessages.length > 0) {
-        setDisplayMessages(liveMessages);
+      if (liveMessagesRaw && liveMessagesRaw.length > 0) {
+        const reversedMessages = [...liveMessagesRaw].reverse();
+        setDisplayMessages(reversedMessages);
         try {
-          const safeToCache = liveMessages.map(m => {
+          const safeToCache = reversedMessages.map(m => {
             const mCopy = Object.assign({}, m);
             if (mCopy.fileData && mCopy.fileData.length > 50000) mCopy.fileData = null; 
             if (mCopy.createdAt && mCopy.createdAt.toMillis) mCopy.cachedTime = mCopy.createdAt.toMillis();
@@ -1063,12 +1060,12 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
           }
         } catch(e) { setDisplayMessages([]); }
       } else {
-        setDisplayMessages(liveMessages || []);
+        setDisplayMessages(liveMessagesRaw ? [...liveMessagesRaw].reverse() : []);
       }
     } else {
       setDisplayMessages([]);
     }
-  }, [liveMessages, msgsLoading, msgsError, activeDM]);
+  }, [liveMessagesRaw, msgsLoading, msgsError, activeDM]);
 
   const messages = displayMessages;
 
