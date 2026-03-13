@@ -784,16 +784,17 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     // Hard clamp to exactly 5000 characters server-side before sending
     const text = form.trim().substring(0, 5000);
 
-    if (text.startsWith('/clear ') && canManage) {
-      const count = parseInt(text.split(' ')[1]);
-      if (count && count > 0 && count <= 50) {
+    if (text.startsWith('/clear ') && (canManage || isAdmin)) {
+      let count = parseInt(text.split(' ')[1]);
+      if (count && count > 0) {
+        if (count > 50) count = 50; // Cap to prevent Firebase batch crash
         try {
           const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
           const batch = firestore.batch();
           snap.docs.forEach(d => batch.delete(d.ref));
           await batch.commit();
           setForm('');
-        } catch(err) { alert("Clear failed: Quota Exceeded."); }
+        } catch(err) { alert("Clear failed. Are you sure you have permission?"); }
         return;
       }
     }
@@ -1129,8 +1130,9 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     const text = form.trim().substring(0, 5000);
 
     if (text.startsWith('/clear ') && isAdmin) {
-      const count = parseInt(text.split(' ')[1]);
-      if (count && count > 0 && count <= 50) {
+      let count = parseInt(text.split(' ')[1]);
+      if (count && count > 0) {
+        if (count > 50) count = 50; // Cap to prevent Firebase batch crash
         try {
           const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
           const batch = firestore.batch();
@@ -1178,14 +1180,6 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
         }
         
         setForm(''); setFile(null); 
-        
-        if (activeDM && activeDM.target && activeDM.target.fcmToken) {
-           fetch(`${BACKEND_URL}/notify`, {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ fcmToken: activeDM.target.fcmToken, title: `New DM from ${myData ? myData.displayName : 'User'}`, body: text ? text : (file ? 'Sent an attachment' : 'New message') })
-           }).catch(err => console.warn("Push failed:", err));
-        }
 
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
@@ -1873,51 +1867,20 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
 
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6, marginTop: 8}}>
                   <div style={{display: 'flex', flexDirection: 'column'}}>
-                    <strong style={{color:'#dbdee1', fontSize:14}}>Push Notifications</strong>
-                    <span style={{color: '#80848e', fontSize: 11}}>Alerts for new messages</span>
+                    <strong style={{color:'#dbdee1', fontSize:14}}>Browser Notifications</strong>
+                    <span style={{color: '#80848e', fontSize: 11}}>Native alerts for new messages</span>
                   </div>
                   <button className="settings-btn" style={{background: '#5865F2', color: '#fff', fontSize: '12px', padding: '6px 12px'}} onClick={async () => {
-                    if (!("Notification" in window)) return alert("Browser does not support notifications");
+                    if (!("Notification" in window)) return alert("Your browser does not support native notifications.");
                     try {
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
-                        const swPath = window.location.pathname.includes('/talk') ? '/talk/firebase-messaging-sw.js' : '/firebase-messaging-sw.js';
-                        
-                        const reg = await navigator.serviceWorker.register(swPath);
-                        await reg.update(); // Force the browser to bypass stale workers
-                        
-                        const readyReg = await navigator.serviceWorker.ready;
-                        const messaging = firebase.messaging();
-                        
-                        // Catch the singleton crash if the user clicks this button twice
-                        try {
-                          messaging.useServiceWorker(readyReg);
-                        } catch (err) {
-                          console.warn("Firebase SW bind skipped (already bound):", err.message);
-                        }
-                        
-                        const token = await messaging.getToken({ 
-                          vapidKey: 'BNiZSSQ1B3e3sBgpiwmlqtOT9BeAYoM2wD9x7WTqxn6MLVA-U6fJMVtVB9RwNH_2YjUH_T8MuFAiNRDdyIq8tf0' 
-                        });
-                        
-                        if (token && auth.currentUser) {
-                          await firestore.collection('users').doc(auth.currentUser.uid).update({ fcmToken: token });
-                          alert("Push notifications successfully enabled and linked to your account!");
-                        } else {
-                          alert("Failed to generate push token.");
-                        }
+                        alert("Native notifications are now enabled! You will hear a ding and see a popup when tabbed out.");
                       } else {
-                        alert("You blocked notifications in your browser settings.");
+                        alert("You have blocked notifications in your browser settings.");
                       }
                     } catch (err) {
-                      console.error(err);
-                      if (err.message && err.message.toLowerCase().includes("storage error")) {
-                        alert("Browser Blocked Storage: We cannot enable notifications. Please make sure you are not in Incognito Mode and that 'Block Third-Party Cookies' is disabled in your browser settings.");
-                      } else if (err.message && err.message.includes("quota")) {
-                        alert("Quota exceeded.");
-                      } else {
-                        alert("Error enabling notifications: " + err.message);
-                      }
+                      alert("Error enabling notifications: " + err.message);
                     }
                   }}>Enable</button>
                 </div>
