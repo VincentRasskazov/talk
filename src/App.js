@@ -3,7 +3,6 @@ import './App.css';
 import firebase from 'firebase/app';
 import 'firebase/firestore';
 import 'firebase/auth';
-import 'firebase/messaging';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useDocumentData } from 'react-firebase-hooks/firestore';
 
@@ -184,11 +183,9 @@ export default function App() {
     
     if (localStorage.getItem('device_banned') === 'true') {
       if (userDoc && userDoc.banned === false) {
-        // Admin explicitly pardoned this account! Lift the device ban.
         localStorage.removeItem('device_banned');
         localStorage.setItem('spam_strikes', '0');
       } else if (userDoc && userDoc.banned !== false) {
-        // New alt account or still banned. Enforce the lock.
         if (!userDoc.banned) firestore.collection('users').doc(user.uid).update({ banned: true }).catch(()=>{});
         return;
       }
@@ -197,7 +194,6 @@ export default function App() {
       return;
     }
     
-    // Only set initial data if the Firestore document doesn't exist yet!
     if (!userDoc || !userDoc.uid) {
       firestore.collection('users').doc(user.uid).set({ uid: user.uid, email: user.email || '', displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Anonymous'), photoURL: user.photoURL || DEFAULT_AVATAR }, { merge: true }).catch(e => console.warn(e));
     }
@@ -366,7 +362,6 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   const targetIsOwner = currentServer && currentServer.owner === userProfile.uid;
   const targetIsSuperAdmin = userProfile.email === 'vincentr111222@gmail.com';
   
-  // Super admin can ban anyone except themselves. Owner can ban anyone except super admin and themselves. Admins can only ban below them.
   const canBan = !targetIsSuperAdmin && (isSuperAdmin || (isServerOwner && !targetIsOwner) || (isServerAdmin && !targetIsAdmin && !targetIsOwner));
 
   const toggleAdmin = async () => {
@@ -381,7 +376,6 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
     try {
       const currentRoles = (currentServer.userRoles && currentServer.userRoles[userProfile.uid]) || [];
       const newRoles = currentRoles.includes(roleId) ? currentRoles.filter(id => id !== roleId) : [...currentRoles, roleId];
-      // Using set with merge avoids crashing if the 'userRoles' parent object hasn't been created yet
       await firestore.collection('servers').doc(currentServer.id).set({ userRoles: { [userProfile.uid]: newRoles } }, { merge: true });
     } catch(e) { alert("Failed to assign role: " + e.message); }
   };
@@ -517,7 +511,6 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
     if (isActive || !dm.updatedAt) return false;
     const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : Date.now();
-    // Add 5000ms buffer to negate Client/Server clock skew (Fixes the Phantom 1)
     return time > (parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') + 5000);
   }) : [];
 
@@ -535,7 +528,6 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     
     document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
 
-    // Native HTML5 In-App Notification Engine
     if (unreadCount > (window._prevUnread || 0)) {
       if (Notification.permission === "granted" && document.hidden) {
         new Notification("New Message on Talk", { icon: DEFAULT_AVATAR, body: "You have unread activity." });
@@ -548,6 +540,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     }
     window._prevUnread = unreadCount;
   }, [unreadDMs.length, myServers, currentServer, view]);
+
   const startDM = async (targetUser) => {
     if (isGuest || !auth.currentUser) return;
     const uid1 = auth.currentUser.uid; 
@@ -784,10 +777,11 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     // Hard clamp to exactly 5000 characters server-side before sending
     const text = form.trim().substring(0, 5000);
 
-    if (text.startsWith('/clear ') && (canManage || isAdmin)) {
+    const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+    if (text.startsWith('/clear ') && (canManage || isSuperAdmin)) {
       let count = parseInt(text.split(' ')[1]);
       if (count && count > 0) {
-        if (count > 50) count = 50; // Cap to prevent Firebase batch crash
+        if (count > 50) count = 50; 
         try {
           const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
           const batch = firestore.batch();
@@ -866,8 +860,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value; 
-    if (val.length > 5000) return; // Physically stops the text box from accepting more text
+    const val = e.target.value.substring(0, 5000); 
     setForm(val); 
     const lastWord = val.split(' ').pop();
     if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
@@ -1015,7 +1008,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
                       <label style={{cursor: 'pointer', margin: 0, display: 'flex', width:'100%', height:'100%', justifyContent:'center', alignItems:'center'}}>+ <input type="file" style={{display:'none'}} onChange={handleFile} /></label>
                     </div>
                     {replyingTo && <div style={{position: 'absolute', top: '-28px', left: '16px', background: '#2b2d31', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', color: '#b5bac1', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #1e1f22', zIndex: 5}}>Replying to <strong style={{color: '#fff'}}>{replyingTo.displayName}</strong> <button type="button" style={{background: 'none', color: '#da373c', fontSize: '14px', padding: 0}} onClick={()=>setReplyingTo(null)}>✕</button></div>}
-                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message #${channel.name} (or Paste Image)`} autoComplete="off" maxLength={5000} />
+                    <input id="server-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message #${channel.name} (or Paste Image)`} autoComplete="off" />
                     <button type="button" onClick={() => setShowGif(!showGif)} style={{background: 'none', color: '#b5bac1', fontWeight: 'bold', padding: '0 12px'}}>GIF</button>
                     <button type="submit" style={{display:'none'}}></button>
                   </form>}
@@ -1132,10 +1125,11 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     // Hard clamp to exactly 5000 characters
     const text = form.trim().substring(0, 5000);
 
-    if (text.startsWith('/clear ') && isAdmin) {
+    const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+    if (text.startsWith('/clear ') && isSuperAdmin) {
       let count = parseInt(text.split(' ')[1]);
       if (count && count > 0) {
-        if (count > 50) count = 50; // Cap to prevent Firebase batch crash
+        if (count > 50) count = 50;
         try {
           const snap = await msgsRef.orderBy('createdAt', 'desc').limit(count).get();
           const batch = firestore.batch();
@@ -1210,8 +1204,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value; 
-    if (val.length > 5000) return; // Physically stops the text box from accepting more text
+    const val = e.target.value.substring(0, 5000); 
     setForm(val); 
     const lastWord = val.split(' ').pop();
     if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
@@ -1312,7 +1305,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
                       </label>
                     </div>
                     {replyingTo && <div style={{position: 'absolute', top: '-28px', left: '16px', background: '#2b2d31', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', color: '#b5bac1', display: 'flex', gap: '8px', border: '1px solid #1e1f22', zIndex: 5}}>Replying to <strong style={{color: '#fff'}}>{replyingTo.displayName}</strong> <button type="button" style={{background: 'none', color: '#da373c', fontSize: '14px', padding: 0}} onClick={()=>setReplyingTo(null)}>✕</button></div>}
-                    <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message @${activeDM.target.displayName} (or Paste Image)`} autoComplete="off" maxLength={5000} />
+                    <input id="dm-chat-input" type="text" value={form} onChange={handleTextChange} onPaste={handlePaste} placeholder={replyingTo ? `Reply to ${replyingTo.displayName}...` : `Message @${activeDM.target.displayName} (or Paste Image)`} autoComplete="off" />
                 <button type="submit" style={{display:'none'}}></button>
               </form>
             </div>
@@ -1331,16 +1324,18 @@ function UrlEmbed({ url, setZoomImage }) {
 
   useEffect(() => {
     if (!isImage && !isPerfMode) {
-      fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`)
+      fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`, {
+        headers: { 'Accept': 'application/json' }
+      })
         .then(res => res.json())
         .then(json => {
           if (json && json.status === 'success' && json.data) {
             setData(json.data);
           }
         })
-        .catch(() => {});
+        .catch(err => console.warn("Embed failed to load:", err));
     }
-  }, [url, isImage]);
+  }, [url, isImage, isPerfMode]);
 
   if (isImage) {
     return <img src={url} alt="embed" style={{display: 'block', maxWidth: '300px', maxHeight: '350px', borderRadius: '8px', marginTop: '8px', cursor: 'zoom-in', border: '1px solid rgba(255,255,255,0.05)', objectFit: 'contain'}} onClick={(e) => { e.stopPropagation(); if (setZoomImage) setZoomImage(url); }} />;
@@ -1362,7 +1357,8 @@ function UrlEmbed({ url, setZoomImage }) {
   return null;
 }
 
-function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers, setReplyingTo }) {  const [isEditing, setIsEditing] = useState(false);
+function ChatMessage({ msg, msgRef, isAdmin, canManage, isGuest, theme, openProfile, onLoginClick, setZoomImage, currentServer, allUsers, setReplyingTo }) {  
+  const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.text || '');
   
   const serverOwner = currentServer ? currentServer.owner : null;
@@ -1712,9 +1708,6 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   );
 }
 
-
-
-
 function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, allServers }) {
   const [tab, setTab] = useState('acc'); 
   const [name, setName] = useState((userDoc && userDoc.displayName) || ''); 
@@ -1739,7 +1732,6 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
           bannerURL: bannerURL || '' 
         }, {merge:true}); 
         
-        // Removed photoURL from Auth update to prevent Base64 string length errors
         await auth.currentUser.updateProfile({ displayName: name || '' }); 
         alert("Profile saved successfully!");
       } catch (err) {
@@ -1757,10 +1749,10 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
             <h4>User Settings</h4>
             <div className={`settings-tab ${tab === 'acc' ? 'active' : ''}`} onClick={()=>setTab('acc')}>My Account</div>
             <div className={`settings-tab ${tab === 'profile' ? 'active' : ''}`} onClick={()=>setTab('profile')}>Profiles</div>
-              <div className={`settings-tab ${tab === 'app' ? 'active' : ''}`} onClick={()=>setTab('app')}>App Settings</div>
-              <div className={`settings-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={()=>setTab('feedback')}>Feedback</div>
-              {isAdmin && <div className={`settings-tab ${tab === 'admin' ? 'active' : ''}`} onClick={()=>setTab('admin')} style={{color: '#f0b232'}}>Admin Panel</div>}
-              <div className="settings-divider"></div>
+            <div className={`settings-tab ${tab === 'app' ? 'active' : ''}`} onClick={()=>setTab('app')}>App Settings</div>
+            <div className={`settings-tab ${tab === 'feedback' ? 'active' : ''}`} onClick={()=>setTab('feedback')}>Feedback</div>
+            {isAdmin && <div className={`settings-tab ${tab === 'admin' ? 'active' : ''}`} onClick={()=>setTab('admin')} style={{color: '#f0b232'}}>Admin Panel</div>}
+            <div className="settings-divider"></div>
             <div className="settings-tab logout" onClick={() => auth.signOut()} style={{color: '#da373c'}}>Log Out</div>
           </div>
         </div>
@@ -1852,15 +1844,6 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                 </div>
 
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
-                  <strong style={{color:'#dbdee1', fontSize:14}}>Hacker Mode (Terminal UI)</strong>
-                  <input type="checkbox" className="settings-checkbox" defaultChecked={localStorage.getItem('monoFont') === 'true'} onChange={(e) => {
-                    localStorage.setItem('monoFont', e.target.checked);
-                    if(e.target.checked) document.body.classList.add('hacker-mode');
-                    else document.body.classList.remove('hacker-mode');
-                  }} />
-                </div>
-
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background: '#1e1f22', padding: 12, borderRadius: 6}}>
                   <div style={{display: 'flex', flexDirection: 'column'}}>
                     <strong style={{color:'#dbdee1', fontSize:14}}>Reverse Layout</strong>
                     <span style={{color: '#80848e', fontSize: 11}}>Moves sidebars to the right</span>
@@ -1881,7 +1864,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                     try {
                       const permission = await Notification.requestPermission();
                       if (permission === 'granted') {
-                        alert("Native notifications are now enabled! You will hear a ding and see a popup when tabbed out.");
+                        alert("Native notifications are enabled! You will hear a ding and see a popup when tabbed out.");
                       } else {
                         alert("You have blocked notifications in your browser settings.");
                       }
@@ -2016,12 +1999,6 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
     </div>
   )
 }
-
-
-// --- WEBRTC VIDEO ENGINE ---
-
-
-// --- WEBRTC VIDEO ENGINE ---
 
 // --- WEBRTC VIDEO ENGINE ---
 const rtcConfig = { iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }] };
