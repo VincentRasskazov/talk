@@ -5,6 +5,7 @@ import 'firebase/firestore';
 import 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useDocumentData } from 'react-firebase-hooks/firestore';
+import emailjs from '@emailjs/browser';
 
 console.log("%c🚀 DEPLOY CHECK: Version 1.0.2 (Verified Update)", "color: #00ff00; font-weight: bold; background: #000; padding: 5px;");
 
@@ -1977,14 +1978,30 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                 <button className="save-btn" onClick={async () => {
                   if (!feedbackText.trim() || !auth.currentUser) return;
                   try {
+                    // 1. Keep the Firestore record (so you can see it in Admin Panel)
                     await firestore.collection('feedback').add({
                       uid: auth.currentUser.uid,
                       displayName: userDoc ? userDoc.displayName : 'Unknown User',
                       text: feedbackText.trim(),
                       createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
+
+                    // 2. Send the Email via EmailJS
+                    const templateParams = {
+                      displayName: userDoc ? userDoc.displayName : 'Unknown User',
+                      uid: auth.currentUser.uid,
+                      message: feedbackText.trim(),
+                    };
+
+                    await emailjs.send(
+                      'service_btnzcfe', // Replace with your Service ID
+                      'template_h8zed2a', // Replace with your Template ID
+                      templateParams,
+                      'z0o7-i6mdOWzAWGlq' // Replace with your Public Key
+                    );
+
                     setFeedbackText('');
-                    alert('Feedback sent successfully! Thank you.');
+                    alert('Feedback sent to Vincent successfully! Thank you.');
                   } catch (e) { 
                     if(checkQuotaError(e)) alert("Failed to send: Daily Quota Exceeded.");
                     else alert('Error: ' + e.message); 
