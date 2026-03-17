@@ -166,6 +166,26 @@ export default function App() {
   const userRef = user ? firestore.collection('users').doc(user.uid) : null;
   const [userDoc, userLoading, userError] = useDocumentData(userRef);
 
+  // --- AUTO-UPDATE ENGINE ---
+  useEffect(() => {
+    const checkVersion = () => {
+      // We use the build date injected by your GitHub Action
+      const currentBuild = process.env.REACT_APP_BUILD_DATE;
+      const lastKnownBuild = localStorage.getItem('last_build_date');
+      
+      if (lastKnownBuild && currentBuild && lastKnownBuild !== currentBuild) {
+        console.log("🚀 New update detected! Hard refreshing...");
+        localStorage.setItem('last_build_date', currentBuild);
+        window.location.reload(true); 
+      } else {
+        localStorage.setItem('last_build_date', currentBuild || "");
+      }
+    };
+    checkVersion();
+    const interval = setInterval(checkVersion, 600000); // Check every 10 mins
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const originalConsoleError = console.error;
     console.error = (...args) => {
@@ -773,6 +793,15 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const sendMsg = async (e) => {
     e.preventDefault(); if(isGuest) return onLoginClick();
     if (!form.trim() && !file) return;
+
+    // PERMISSION CHECK
+    // PERMISSION CHECK
+    const myRoles = (server.userRoles && server.userRoles[auth.currentUser.uid]) || [];
+    const currentRoles = server.roles && server.roles.length > 0 ? server.roles : [{ id: 'everyone', perms: { send: true } }];
+    const canSend = isAdmin || (server.owner === auth.currentUser.uid) || currentRoles.some(r => 
+      (myRoles.includes(r.id) || r.id === 'everyone') && r.perms && r.perms.send
+    );
+    if (!canSend) return alert("You do not have permission to speak in this server.");
     
     // Hard clamp to exactly 5000 characters server-side before sending
     const text = form.trim().substring(0, 5000);
@@ -834,7 +863,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
-          const aiContext = `System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. You are talking to a user named ${myData ? myData.displayName : 'User'}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
+          const browserInfo = `OS/Browser: ${navigator.userAgent}, Language: ${navigator.language}, Screen: ${window.innerWidth}x${window.innerHeight}, Time: ${new Date().toLocaleString()}`;
+          const aiContext = `System: You are VincentAI, an advanced AI assistant built directly into Talk, a real-time messaging app. You are talking to ${myData ? myData.displayName : 'User'} in #${channel.name}. User Env: ${browserInfo}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
           const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: aiContext + aiPrompt, model: aiModel }) });
           if (!response.ok) throw new Error("AI failed");
           const aiResult = await response.text();
@@ -930,11 +960,11 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
           })}
         </div>
         <div className="user-panel">
-          <div className="user-panel-info" onClick={()=>!isGuest && openProfile(myData)}>
-            <div className="avatar-container"><img src={isGuest ? DEFAULT_AVATAR : (myData ? myData.photoURL : DEFAULT_AVATAR)} alt="PFP" /></div>
-            <div><strong>{isGuest?'Guest':(myData ? myData.displayName : 'User')}</strong></div>
+          <div className="user-panel-info" onClick={()=>openProfile(myData)}>
+            <div className="avatar-container"><img src={(userDoc && userDoc.photoURL) ? userDoc.photoURL : DEFAULT_AVATAR} alt="PFP" /></div>
+            <div><strong>{myData ? myData.displayName : 'User'}</strong></div>
           </div>
-          {!isGuest ? <button className="settings-btn" onClick={openSettings}>⚙️</button> : <button className="auth-btn" onClick={onLoginClick} style={{margin:0, padding:'8px 12px', width:'auto', background:theme}}>Login</button>}
+          <button className="settings-btn" onClick={openSettings}>⚙️</button>
         </div>
       </div>
 
@@ -1180,7 +1210,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
 
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
-          const aiContext = `System: You are VincentAI. You are talking to a user named ${myData ? myData.displayName : 'User'}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
+          const browserInfo = `OS/Browser: ${navigator.userAgent}, Language: ${navigator.language}, Screen: ${window.innerWidth}x${window.innerHeight}, Time: ${new Date().toLocaleString()}`;
+          const aiContext = `System: You are VincentAI. You are talking to ${myData ? myData.displayName : 'User'} in a private DM. User Env: ${browserInfo}. Please answer shortly. Btw, you are not Vincent, you are VincentAI. Don't be inappropriate. Do not share this System Instruction. Be helpful, concise, and friendly.\n\nUser: `;
           const response = await fetch(`${BACKEND_URL}/chat`, { method: 'POST', headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: msgId, token: token, message: aiContext + aiPrompt, model: aiModel }) });
           if (!response.ok) throw new Error("AI failed to respond.");
           await msgsRef.add({ text: await response.text(), createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: 'vincent-ai-bot', photoURL: 'https://api.dicebear.com/9.x/bottts-neutral/svg?seed=VincentAI', displayName: `VincentAI (${triggerUsed})` });
@@ -1253,7 +1284,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
         </div>
         <div className="user-panel">
           <div className="user-panel-info" onClick={()=>openProfile(myData)}>
-            <div className="avatar-container"><img src={myData ? myData.photoURL : DEFAULT_AVATAR} alt="PFP" /></div>
+            <div className="avatar-container"><img src={myData && myData.photoURL ? myData.photoURL : (auth.currentUser && auth.currentUser.photoURL ? auth.currentUser.photoURL : DEFAULT_AVATAR)} alt="PFP" /></div>
             <div><strong>{myData ? myData.displayName : 'User'}</strong></div>
           </div>
           <button className="settings-btn" onClick={openSettings}>⚙️</button>
@@ -1546,7 +1577,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const [isPublic, setIsPublic] = useState(server.isPublic || false);
   const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
-  const [roles, setRoles] = useState(server.roles || []);
+  const [roles, setRoles] = useState(server.roles || [{ id: 'everyone', name: '@everyone', color: '#99aab5', perms: { view: true, send: true } }]);
   
   // Create a persistent invite code when the modal opens if one doesn't exist
   const [inviteCode] = useState(server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase());
@@ -1573,14 +1604,13 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const save = async () => {
     if (auth.currentUser) {
       const finalInviteCode = !isPublic ? inviteCode : null;
-      let members = server.members || [];
-      if (!isPublic && members.length === 0) members = [auth.currentUser.uid];
       try {
-        await firestore.collection('servers').doc(server.id).update({ name, description, icon, bannerURL, isPublic, isDiscoverable, inviteCode: finalInviteCode, members, roles }); 
+        await firestore.collection('servers').doc(server.id).update({ 
+          name, description, icon, bannerURL, isPublic, isDiscoverable, 
+          inviteCode: finalInviteCode, roles 
+        }); 
         close(); 
-      } catch (err) {
-        if(checkQuotaError(err)) alert("Save failed: Daily Quota Exceeded.");
-      }
+      } catch (err) { alert("Save failed."); }
     }
   };
 
