@@ -961,7 +961,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         </div>
         <div className="user-panel">
           <div className="user-panel-info" onClick={()=>openProfile(myData)}>
-            <div className="avatar-container"><img src={(userDoc && userDoc.photoURL) ? userDoc.photoURL : DEFAULT_AVATAR} alt="PFP" /></div>
+            <div className="avatar-container"><img src={myData && myData.photoURL ? myData.photoURL : (auth.currentUser && auth.currentUser.photoURL ? auth.currentUser.photoURL : DEFAULT_AVATAR)} alt="PFP" /></div>
             <div><strong>{myData ? myData.displayName : 'User'}</strong></div>
           </div>
           <button className="settings-btn" onClick={openSettings}>⚙️</button>
