@@ -795,12 +795,21 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     if (!form.trim() && !file) return;
 
     // PERMISSION CHECK
-    // PERMISSION CHECK
     const myRoles = (server.userRoles && server.userRoles[auth.currentUser.uid]) || [];
-    const currentRoles = server.roles && server.roles.length > 0 ? server.roles : [{ id: 'everyone', perms: { send: true } }];
-    const canSend = isAdmin || (server.owner === auth.currentUser.uid) || currentRoles.some(r => 
-      (myRoles.includes(r.id) || r.id === 'everyone') && r.perms && r.perms.send
-    );
+    let canSend = isAdmin || (server.owner === auth.currentUser.uid);
+    
+    if (!canSend) {
+      // 1. Check if they have a specific custom role that grants permission
+      const hasExplicitRole = server.roles && server.roles.some(r => myRoles.includes(r.id) && r.perms && r.perms.send);
+      
+      // 2. Check the @everyone fallback
+      const everyoneRole = server.roles && server.roles.find(r => r.id === 'everyone');
+      // If @everyone exists and 'send' is explicitly false, deny. Otherwise, allow.
+      const everyoneCanSend = everyoneRole && everyoneRole.perms ? everyoneRole.perms.send !== false : true;
+      
+      canSend = hasExplicitRole || everyoneCanSend;
+    }
+
     if (!canSend) return alert("You do not have permission to speak in this server.");
     
     // Hard clamp to exactly 5000 characters server-side before sending
