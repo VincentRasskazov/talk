@@ -12,13 +12,16 @@ const buildDate = process.env.REACT_APP_BUILD_DATE || "Local Dev Mode";
 console.log(`%c🚀 TALK POLISH UPDATE \n📅 Built on: ${buildDate}`, "color: #5865F2; font-size: 14px; font-weight: bold; border: 2px solid #5865F2; padding: 10px; border-radius: 8px;");
 
 firebase.initializeApp({
-  apiKey: "AIzaSyChrfsHBeDKy56koXEFCPgOPM9f_BJh9Rk",
-  authDomain: "chat-65f4a.firebaseapp.com",
-  projectId: "chat-65f4a",
-  storageBucket: "chat-65f4a.firebasestorage.app",
-  messagingSenderId: "512709701751",
-  appId: "1:512709701751:web:9f1d34aae5a67aee451672"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
 });
+
+const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL || "admin@example.com";
+const BACKEND_URL = process.env.REACT_APP_AI_BACKEND_URL || "http://localhost:5000";
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
@@ -242,7 +245,7 @@ export default function App() {
       ) : showAuth && !user ? (
         <AuthScreen themeColor={themeColor} goBack={() => setShowAuth(false)} />
       ) : (
-        <MainApp themeColor={themeColor} setThemeColor={setThemeColor} isGuest={!user} onLoginClick={() => setShowAuth(true)} setZoomImage={setZoomImage} />
+        <MainApp themeColor={themeColor} setThemeColor={setThemeColor} isGuest={!user} onLoginClick={() => setShowAuth(true)} setZoomImage={setZoomImage} userDoc={userDoc} />
       )}
     </div>
   );
@@ -373,14 +376,14 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
 
 function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, startDM, isSelf, currentServer, setView }) {
   if(!userProfile) return null;
-  const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+  const isSuperAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
   const isServerOwner = currentServer && auth.currentUser && currentServer.owner === auth.currentUser.uid;
   const isServerAdmin = currentServer && currentServer.admins && auth.currentUser && currentServer.admins.includes(auth.currentUser.uid);
   const canManage = isSuperAdmin || isServerOwner || isServerAdmin;
   const targetIsAdmin = currentServer && currentServer.admins && currentServer.admins.includes(userProfile.uid);
 
   const targetIsOwner = currentServer && currentServer.owner === userProfile.uid;
-  const targetIsSuperAdmin = userProfile.email === 'vincentr111222@gmail.com';
+  const targetIsSuperAdmin = userProfile.email === ADMIN_EMAIL;
   
   const canBan = !targetIsSuperAdmin && (isSuperAdmin || (isServerOwner && !targetIsOwner) || (isServerAdmin && !targetIsAdmin && !targetIsOwner));
 
@@ -424,7 +427,7 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <h2 style={{margin: '0', color: '#fff', display:'flex', alignItems:'center', gap: 8}}>
               {userProfile.displayName}
-              {isSuperAdmin && userProfile.email === 'vincentr111222@gmail.com' && <span style={{background:'#f0b232', color:'#000', fontSize:10, padding:'2px 6px', borderRadius:4}}>SYSADMIN</span>}
+              {isSuperAdmin && userProfile.email === ADMIN_EMAIL && <span style={{background:'#f0b232', color:'#000', fontSize:10, padding:'2px 6px', borderRadius:4}}>SYSADMIN</span>}
               {currentServer && currentServer.owner === userProfile.uid && <span style={{background:'#f0b232', color:'#000', fontSize:10, padding:'2px 6px', borderRadius:4}}>OWNER</span>}
               {targetIsAdmin && <span style={{background:'#5865F2', color:'#fff', fontSize:10, padding:'2px 6px', borderRadius:4}}>ADMIN</span>}
             </h2>
@@ -479,7 +482,7 @@ function ProfileModal({ userProfile, close, themeColor, isGuest, onLoginClick, s
   )
 }
 
-function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImage }) {
+function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImage, userDoc }) {
   const [view, setView] = useState('discovery');
   const [currentServer, setCurrentServer] = useState(null);
   const [currentChannel, setCurrentChannel] = useState(null);
@@ -490,7 +493,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [channelsOpenPC, setChannelsOpenPC] = useState(true);
 
-  const isAdmin = !isGuest && auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+  const isAdmin = !isGuest && auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
   const [allServers, serversLoading, serversError] = useCollectionData(firestore.collection('servers').orderBy('createdAt'), { idField: 'id' });
   const [allUsers, usersLoading, usersError] = useCollectionData(firestore.collection('users'));
   const dmsQuery = !isGuest && auth.currentUser ? firestore.collection('dms').where('users', 'array-contains', auth.currentUser.uid) : null;
@@ -520,8 +523,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   }
   let servers = myServers.concat(showAdminServers ? adminServers : []);
 
-  let currentUserData = null;
-  if (allUsers && auth.currentUser) currentUserData = allUsers.find(u => u.uid === auth.currentUser.uid);
+  // Direct cache connection ensures instant PFP updates and removes the flickering bug
+  let currentUserData = userDoc || null;
 
   useEffect(() => { 
     if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
@@ -815,7 +818,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
     // Hard clamp to exactly 5000 characters server-side before sending
     const text = form.trim().substring(0, 5000);
 
-    const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+    const isSuperAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
     if (text.startsWith('/clear ') && (canManage || isSuperAdmin)) {
       let count = parseInt(text.split(' ')[1]);
       if (count && count > 0) {
@@ -1164,7 +1167,7 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
     // Hard clamp to exactly 5000 characters
     const text = form.trim().substring(0, 5000);
 
-    const isSuperAdmin = auth.currentUser && auth.currentUser.email === 'vincentr111222@gmail.com';
+    const isSuperAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
     if (text.startsWith('/clear ') && isSuperAdmin) {
       let count = parseInt(text.split(' ')[1]);
       if (count && count > 0) {
@@ -1957,7 +1960,7 @@ function SettingsModal({ close, theme, setTheme, isAdmin, userDoc, allUsers, all
                         }
                       }}>Edit</button>
 
-                      {u.email !== 'vincentr111222@gmail.com' && (
+                      {u.email !== ADMIN_EMAIL && (
                         <button className={u.banned ? "unban-btn" : "ban-btn"} onClick={async () => { 
                           if(window.confirm(u.banned ? "Unban this user?" : "Ban user permanently?")) {
                             try { await firestore.collection('users').doc(u.uid).update({ banned: !u.banned }); }
