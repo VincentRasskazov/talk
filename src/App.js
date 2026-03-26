@@ -551,8 +551,9 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const unreadDMs = allDMs ? allDMs.filter(dm => {
     const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
     if (isActive || !dm.updatedAt) return false;
-    const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : Date.now();
-    return time > (parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') + 5000);
+    const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : 0;
+    if (time === 0) return false; // Ignores local pending writes
+    return time > (parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') + 2000);
   }) : [];
 
   useEffect(() => {
@@ -560,8 +561,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     myServers.forEach(s => {
       const isActive = currentServer && currentServer.id === s.id && view === 'servers';
       if (!isActive && s.updatedAt) {
-        const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : Date.now();
-        if (time > (parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') + 5000)) {
+        const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : 0;
+        if (time > 0 && time > (parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') + 2000)) {
           unreadCount++;
         }
       }
@@ -890,6 +891,9 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
         }
         
         setForm(''); setFile(null);
+        // Force the read timer into the future so our own message doesn't ding us
+        localStorage.setItem(`read_chan_${channel.id}`, (Date.now() + 15000).toString());
+        localStorage.setItem(`read_server_${server.id}`, (Date.now() + 15000).toString());
         
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
@@ -1237,6 +1241,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
         }
         
         setForm(''); setFile(null); 
+        // Force the read timer into the future so our own message doesn't ding us
+        localStorage.setItem(`read_dm_${activeDM.id}`, (Date.now() + 15000).toString());
 
         if (aiModel && aiPrompt) {
           const msgId = window.crypto.randomUUID(); const token = await generateToken(msgId);
