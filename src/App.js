@@ -37,7 +37,7 @@ const DEFAULT_AVATAR = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwID
 const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🔥'];
 
 // --- AI API INTEGRATION ---
-const BACKEND_URL = "https://backendai-ablv.onrender.com";
+
 const SECRET_SALT = "vincent-gemini-ultra-secure-salt-2026-x";
 const AI_MODELS = {
   '@deepseek': 'deepai-deepseek',
