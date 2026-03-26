@@ -12,16 +12,16 @@ const buildDate = process.env.REACT_APP_BUILD_DATE || "Local Dev Mode";
 console.log(`%c🚀 TALK POLISH UPDATE \n📅 Built on: ${buildDate}`, "color: #5865F2; font-size: 14px; font-weight: bold; border: 2px solid #5865F2; padding: 10px; border-radius: 8px;");
 
 firebase.initializeApp({
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID
+  apiKey: "AIzaSyChrfsHBeDKy56koXEFCPgOPM9f_BJh9Rk",
+  authDomain: "chat-65f4a.firebaseapp.com",
+  projectId: "chat-65f4a",
+  storageBucket: "chat-65f4a.firebasestorage.app",
+  messagingSenderId: "512709701751",
+  appId: "1:512709701751:web:9f1d34aae5a67aee451672"
 });
 
-const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL || "admin@example.com";
-const BACKEND_URL = process.env.REACT_APP_AI_BACKEND_URL || "http://localhost:5000";
+const ADMIN_EMAIL = "vincentr111222@gmail.com";
+const BACKEND_URL = "https://backendai-ablv.onrender.com";
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
@@ -222,7 +222,25 @@ export default function App() {
     }
   }, [user, userDoc, userLoading]);
 
-  if (loading) return <div style={{background: '#313338', height: '100%'}}></div>;
+  if (loading) {
+    return (
+      <div style={{ background: '#313338', height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+        <style>{`
+          @keyframes logoPulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+          }
+        `}</style>
+        <img 
+          src={DEFAULT_AVATAR} 
+          alt="Loading Logo" 
+          style={{ width: '120px', animation: 'logoPulse 1.5s infinite ease-in-out' }} 
+        />
+        <h2 style={{ color: 'white', marginTop: '24px', fontFamily: 'sans-serif', letterSpacing: '2px' }}>LOADING TALK...</h2>
+      </div>
+    );
+  }
 
   return (
     <div className="app-wrapper" style={{'--accent-color': themeColor}}>
