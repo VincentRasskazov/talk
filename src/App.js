@@ -800,14 +800,16 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   useEffect(() => {
     if (channel) {
       setLastReadTime(parseInt(localStorage.getItem(`read_chan_${channel.id}`) || '0'));
-      localStorage.setItem(`read_chan_${channel.id}`, Date.now().toString());
+      // Pad 60 seconds into the future to annihilate Firebase clock skew
+      localStorage.setItem(`read_chan_${channel.id}`, (Date.now() + 60000).toString());
+      if (server) localStorage.setItem(`read_server_${server.id}`, (Date.now() + 60000).toString());
     }
-  }, [channel]);
+  }, [channel, server]);
 
   useEffect(() => { 
     if (channel && server && messages && messages.length > 0) {
-      localStorage.setItem(`read_chan_${channel.id}`, Date.now().toString());
-      localStorage.setItem(`read_server_${server.id}`, Date.now().toString());
+      localStorage.setItem(`read_chan_${channel.id}`, (Date.now() + 60000).toString());
+      localStorage.setItem(`read_server_${server.id}`, (Date.now() + 60000).toString());
     }
     const timer = setTimeout(() => {
       if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
@@ -1185,12 +1187,15 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   useEffect(() => {
     if (activeDM) {
       setLastReadTime(parseInt(localStorage.getItem(`read_dm_${activeDM.id}`) || '0'));
-      localStorage.setItem(`read_dm_${activeDM.id}`, Date.now().toString());
+      // Pad 60 seconds into the future to annihilate Firebase clock skew
+      localStorage.setItem(`read_dm_${activeDM.id}`, (Date.now() + 60000).toString());
     }
   }, [activeDM]);
 
   useEffect(() => { 
-    if (activeDM && messages && messages.length > 0) localStorage.setItem(`read_dm_${activeDM.id}`, Date.now().toString());
+    if (activeDM && messages && messages.length > 0) {
+      localStorage.setItem(`read_dm_${activeDM.id}`, (Date.now() + 60000).toString());
+    }
     const timer = setTimeout(() => {
       if (dummy.current && dummy.current.scrollIntoView) dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, 150);
