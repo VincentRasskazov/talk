@@ -563,8 +563,8 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
 
   const unreadDMs = allDMs ? allDMs.filter(dm => {
     const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
-    if (isActive || !dm.updatedAt) return false;
-    const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : 0;
+    if (isActive) return false;
+    const time = dm.updatedAt && dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : 0;
     if (time === 0) return false; // Ignore pending local writes instantly
     return time > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0');
   }) : [];
@@ -573,8 +573,9 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     let unreadCount = unreadDMs.length;
     myServers.forEach(s => {
       const isActive = currentServer && currentServer.id === s.id && view === 'servers';
-      if (!isActive && s.updatedAt) {
-        const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : 0;
+      const isMuted = localStorage.getItem('mute_' + s.id) === 'true';
+      if (!isActive && !isMuted) { // Skip muted servers entirely
+        const time = s.updatedAt && s.updatedAt.toMillis ? s.updatedAt.toMillis() : 0;
         if (time > 0 && time > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0')) {
           unreadCount++;
         }
@@ -583,7 +584,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     
     document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
 
-    // DING ENGINE: ONLY alert if the browser tab is hidden!
+    // STRICT DING ENGINE: ONLY trigger if the user is physically tabbed out
     if (unreadCount > (window._prevUnread || 0)) {
       if (document.hidden) {
         if (Notification.permission === "granted") {
@@ -640,6 +641,15 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
           <div className="server-icon-wrapper" onClick={() => { setView('discovery'); setMobileNavOpen(true); setCurrentServer(null); }}>
             <div className={`server-icon ${view === 'discovery' ? 'active' : ''}`} style={{background: '#23a559', borderRadius: view==='discovery'?16:24}} title="Discover Servers">🌍</div>
           </div>
+          
+          <div className="server-icon-wrapper" onClick={() => {
+            myServers.forEach(s => localStorage.setItem(`read_server_${s.id}`, Date.now().toString()));
+            if (allDMs) allDMs.forEach(dm => localStorage.setItem(`read_dm_${dm.id}`, Date.now().toString()));
+            window.location.reload();
+          }}>
+            <div className="server-icon" style={{background: '#4e5058', borderRadius: 24, fontSize: '12px'}} title="Mark All As Read">✓</div>
+          </div>
+
           <div className="divider"></div>
           
           {unreadDMs.map(dm => {
