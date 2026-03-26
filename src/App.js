@@ -548,12 +548,25 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     if (servers.length > 0 && !currentServer && view === 'servers') setCurrentServer(servers[0]); 
   }, [servers, currentServer, view]);
 
+  // PERFECT SYNC: Instantly match local read time to exact server time when actively viewing
+  useEffect(() => {
+    if (view === 'servers' && currentServer && currentServer.updatedAt && currentServer.updatedAt.toMillis) {
+      localStorage.setItem(`read_server_${currentServer.id}`, currentServer.updatedAt.toMillis().toString());
+    }
+    if (view === 'dms' && activeDM && allDMs) {
+      const fullDM = allDMs.find(d => d.id === activeDM.id);
+      if (fullDM && fullDM.updatedAt && fullDM.updatedAt.toMillis) {
+        localStorage.setItem(`read_dm_${activeDM.id}`, fullDM.updatedAt.toMillis().toString());
+      }
+    }
+  }, [currentServer, activeDM, allDMs, view]);
+
   const unreadDMs = allDMs ? allDMs.filter(dm => {
     const isActive = activeDM && activeDM.id === dm.id && view === 'dms';
     if (isActive || !dm.updatedAt) return false;
     const time = dm.updatedAt.toMillis ? dm.updatedAt.toMillis() : 0;
-    if (time === 0) return false; // Ignores local pending writes
-    return time > (parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0') + 2000);
+    if (time === 0) return false; // Ignore pending local writes instantly
+    return time > parseInt(localStorage.getItem(`read_dm_${dm.id}`) || '0');
   }) : [];
 
   useEffect(() => {
@@ -562,7 +575,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
       const isActive = currentServer && currentServer.id === s.id && view === 'servers';
       if (!isActive && s.updatedAt) {
         const time = s.updatedAt.toMillis ? s.updatedAt.toMillis() : 0;
-        if (time > 0 && time > (parseInt(localStorage.getItem(`read_server_${s.id}`) || '0') + 2000)) {
+        if (time > 0 && time > parseInt(localStorage.getItem(`read_server_${s.id}`) || '0')) {
           unreadCount++;
         }
       }
@@ -570,15 +583,18 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
     
     document.title = unreadCount > 0 ? `(${unreadCount}) 🔴 Talk` : 'Talk';
 
+    // DING ENGINE: ONLY alert if the browser tab is hidden!
     if (unreadCount > (window._prevUnread || 0)) {
-      if (Notification.permission === "granted" && document.hidden) {
-        new Notification("New Message on Talk", { icon: DEFAULT_AVATAR, body: "You have unread activity." });
+      if (document.hidden) {
+        if (Notification.permission === "granted") {
+          new Notification("New Message on Talk", { icon: DEFAULT_AVATAR, body: "You have unread activity." });
+        }
+        try {
+          const audio = new Audio('https://actions.google.com/sounds/v1/alarms/message_alert_tone.ogg');
+          audio.volume = 0.4;
+          audio.play().catch(()=>{});
+        } catch(e) {}
       }
-      try {
-        const audio = new Audio('https://actions.google.com/sounds/v1/alarms/message_alert_tone.ogg');
-        audio.volume = 0.4;
-        audio.play().catch(()=>{});
-      } catch(e) {}
     }
     window._prevUnread = unreadCount;
   }, [unreadDMs.length, myServers, currentServer, view]);
