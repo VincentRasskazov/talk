@@ -781,6 +781,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   useEffect(() => { setMsgLimit(50); }, [channel]); // Reset limit when switching channels
 
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
+  const [displayMessages, setDisplayMessages] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
 
   useEffect(() => {
@@ -1190,6 +1192,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   useEffect(() => { setMsgLimit(50); }, [activeDM]); // Reset limit when switching DMs
 
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
+  const [displayMessages, setDisplayMessages] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
