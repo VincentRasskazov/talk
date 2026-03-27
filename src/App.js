@@ -523,7 +523,19 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   const [activeGlobalCall, setActiveGlobalCall] = useState(null);
 
   const [showAdminServers, setShowAdminServers] = useState(false);
+  const [showNotifPromo, setShowNotifPromo] = useState(false);
   const isQuotaExceeded = checkQuotaError(serversError) || checkQuotaError(usersError) || checkQuotaError(dmsError);
+
+  // NOTIFICATION PROMO ENGINE
+  useEffect(() => {
+    if (!isGuest && "Notification" in window && Notification.permission === "default" && localStorage.getItem('hide_notif_promo') !== 'true') {
+      const timer = setTimeout(() => {
+        // 40% chance to show the popup every time they open the app
+        if (Math.random() > 0.6) setShowNotifPromo(true); 
+      }, 8000); // Wait 8 seconds before popping up
+      return () => clearTimeout(timer);
+    }
+  }, [isGuest]);
 
   let myServers = [];
   let adminServers = [];
@@ -617,6 +629,23 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
   return (
     <>
       {isQuotaExceeded && <div className="quota-error-banner">⚠️ Firebase Daily Quota Exceeded. The database will reset at Midnight (PT).</div>}
+
+      {showNotifPromo && (
+        <div className="incoming-call-banner" style={{position: 'absolute', bottom: 20, right: 20, zIndex: 9999, background: '#2b2d31', color: '#dbdee1', padding: 16, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, border: `1px solid ${themeColor}`, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', maxWidth: 300}}>
+          <div><strong style={{color: '#fff'}}>🔔 Turn on Notifications?</strong><br/><span style={{fontSize: 13}}>Get notified when you receive a DM or someone mentions you.</span></div>
+          <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button onClick={async () => {
+              try {
+                const perm = await Notification.requestPermission();
+                if (perm === 'granted') alert("Awesome! You'll now get alerts.");
+                setShowNotifPromo(false);
+              } catch(e) {}
+            }} style={{background: themeColor, color: '#fff', padding: '6px 12px', flex: 1, borderRadius: 4, border: 'none', fontWeight: 'bold'}}>Enable</button>
+            <button onClick={() => setShowNotifPromo(false)} style={{background: '#4e5058', color: '#fff', padding: '6px 12px', flex: 1, borderRadius: 4, border: 'none'}}>Not Now</button>
+            <button onClick={() => { localStorage.setItem('hide_notif_promo', 'true'); setShowNotifPromo(false); }} style={{background: 'transparent', color: '#949ba4', padding: '6px 12px', width: '100%', border: 'none', fontSize: 12}}>Never Ask Again</button>
+          </div>
+        </div>
+      )}
       
       {activeIncomingCall && !activeGlobalCall && (
         <div className="incoming-call-banner" style={{position: 'absolute', top: 20, right: 20, zIndex: 9999, background: '#23a559', color: 'white', padding: 16, borderRadius: 8, display: 'flex', gap: 16, alignItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.5)'}}>
@@ -748,8 +777,10 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const [channels] = useCollectionData(channelsRef.orderBy('createdAt'), { idField: 'id' });
   const msgsRef = channel ? firestore.collection(`servers/${server.id}/channels/${channel.id}/messages`) : null;
   
-  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
-  const [displayMessages, setDisplayMessages] = useState([]);
+  const [msgLimit, setMsgLimit] = useState(50);
+  useEffect(() => { setMsgLimit(50); }, [channel]); // Reset limit when switching channels
+
+  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
   const [replyingTo, setReplyingTo] = useState(null);
 
   useEffect(() => {
@@ -1052,6 +1083,17 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
             ) : (
               <>
                 <main>
+                  {liveMessagesRaw && liveMessagesRaw.length >= msgLimit && (
+                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                      <button onClick={() => {
+                        if (window.confirm("⚠️ WARNING: Loading older messages may cause your computer to lag and will consume more of the database quota. Are you sure you want to load 50 more?")) {
+                          setMsgLimit(prev => prev + 50);
+                        }
+                      }} style={{ background: '#2b2d31', color: '#dbdee1', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '16px', fontSize: '13px', cursor: 'pointer', transition: '0.2s' }}>
+                        ⬆️ Load 50 More Messages
+                      </button>
+                    </div>
+                  )}
                   {messages && (() => {
                     let dividerRendered = false;
                     return messages.map((m) => {
@@ -1144,7 +1186,10 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [mentionQuery, setMentionQuery] = useState(null);
   const [inCall, setInCall] = useState(false);
   const msgsRef = activeDM ? firestore.collection(`dms/${activeDM.id}/messages`) : null;
-  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(35) : null, { idField: 'id' });
+  const [msgLimit, setMsgLimit] = useState(50);
+  useEffect(() => { setMsgLimit(50); }, [activeDM]); // Reset limit when switching DMs
+
+  const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
 
@@ -1372,6 +1417,17 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
             {inCall && <VideoCallRoom dmId={activeDM.id} isCaller={true} closeCall={() => setInCall(false)} myName={myData ? myData.displayName : 'User'} otherName={activeDM.target.displayName} targetUid={activeDM.target.uid} />}
             
             <main>
+              {liveMessagesRaw && liveMessagesRaw.length >= msgLimit && (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <button onClick={() => {
+                    if (window.confirm("⚠️ WARNING: Loading older messages may cause your computer to lag and will consume more of the database quota. Are you sure you want to load 50 more?")) {
+                      setMsgLimit(prev => prev + 50);
+                    }
+                  }} style={{ background: '#2b2d31', color: '#dbdee1', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '16px', fontSize: '13px', cursor: 'pointer', transition: '0.2s' }}>
+                    ⬆️ Load 50 More Messages
+                  </button>
+                </div>
+              )}
               {messages && (() => {
                 let dividerRendered = false;
                 return messages.map((m) => {
