@@ -783,7 +783,7 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
-  const [replyingTo, setReplyingTo] = useState(null);
+  
 
   useEffect(() => {
     if (channel) {
@@ -1194,8 +1194,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const [liveMessagesRaw, msgsLoading, msgsError] = useCollectionData(msgsRef ? msgsRef.orderBy('createdAt', 'desc').limit(msgLimit) : null, { idField: 'id' });
   const [displayMessages, setDisplayMessages] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
-  const [displayMessages, setDisplayMessages] = useState([]);
-  const [replyingTo, setReplyingTo] = useState(null);
+  
+  
 
   useEffect(() => {
     if (activeDM) {
