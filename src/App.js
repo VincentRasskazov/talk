@@ -942,14 +942,24 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
 
     if (msgsRef && auth.currentUser) {
       try {
-        let finalMsg = text;
+        let cleanText = text;
+
+        // Apply Profanity Filter via API if enabled
+        if (server.profanityFilter && cleanText) {
+          try {
+            const res = await fetch(`https://www.purgomalum.com/service/json?text=${encodeURIComponent(cleanText)}`);
+            const data = await res.json();
+            cleanText = data.result; // Replaces swears with ***
+          } catch (err) { console.warn("Profanity API failed, sending raw."); }
+        }
+
+        let finalMsg = cleanText;
         if (replyingTo) {
-          finalMsg = `> **Replying to ${replyingTo.displayName}:** *${replyingTo.text ? replyingTo.text.substring(0, 40).replace(/\n/g, ' ') : 'Attachment'}...*\n` + text;
+          finalMsg = `> **Replying to ${replyingTo.displayName}:** *${replyingTo.text ? replyingTo.text.substring(0, 40).replace(/\n/g, ' ') : 'Attachment'}...*\n` + cleanText;
           setReplyingTo(null);
         }
 
         await msgsRef.add({ text: finalMsg, fileData: file ? file.data : null, fileType: file ? file.type : null, fileName: file ? file.name : null, createdAt: firebase.firestore.FieldValue.serverTimestamp(), uid: auth.currentUser.uid, photoURL: myData ? myData.photoURL : DEFAULT_AVATAR, displayName: myData ? myData.displayName : 'User', isEdited: false });
-        
         // EXTREME OPTIMIZATION: Throttle directory updates to once per 60 seconds
         window._lastWrite = window._lastWrite || {};
         const now = Date.now();
@@ -993,7 +1003,8 @@ function ServerContent({ server, channel, setChannel, isAdmin, isGuest, theme, o
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value.substring(0, 5000); 
+    const limit = server.maxMsgLength || 5000;
+    const val = e.target.value.substring(0, limit); 
     setForm(val); 
     const lastWord = val.split(' ').pop();
     if (lastWord.startsWith('@')) setMentionQuery(lastWord.substring(1).toLowerCase()); else setMentionQuery(null);
@@ -1274,8 +1285,8 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const sendMsg = async (e) => {
     e.preventDefault(); if (!form.trim() && !file) return;
     
-    // Hard clamp to exactly 5000 characters
-    const text = form.trim().substring(0, 5000);
+    const limit = server.maxMsgLength || 5000;
+    const text = form.trim().substring(0, limit);
 
     const isSuperAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
     if (text.startsWith('/clear ') && isSuperAdmin) {
@@ -1713,6 +1724,8 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
   const [isDiscoverable, setIsDiscoverable] = useState(server.isDiscoverable || false);
   const [isMuted, setIsMuted] = useState(localStorage.getItem('mute_' + server.id) === 'true');
   const [roles, setRoles] = useState(server.roles || [{ id: 'everyone', name: '@everyone', color: '#99aab5', perms: { view: true, send: true } }]);
+  const [maxMsgLength, setMaxMsgLength] = useState(server.maxMsgLength || 5000);
+  const [profanityFilter, setProfanityFilter] = useState(server.profanityFilter || false);
   
   // Create a persistent invite code when the modal opens if one doesn't exist
   const [inviteCode] = useState(server.inviteCode || Math.random().toString(36).substring(2,8).toUpperCase());
@@ -1742,7 +1755,7 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
       try {
         await firestore.collection('servers').doc(server.id).update({ 
           name, description, icon, bannerURL, isPublic, isDiscoverable, 
-          inviteCode: finalInviteCode, roles 
+          inviteCode: finalInviteCode, roles, maxMsgLength, profanityFilter 
         }); 
         close(); 
       } catch (err) { alert("Save failed."); }
@@ -1837,6 +1850,19 @@ function ServerSettingsModal({ server, close, theme, setView, allUsers, isAdmin 
 
           {tab === 'moderation' && (
             <>
+              <h3 style={{color: '#fff', marginTop: 0}}>Chat Restrictions</h3>
+              
+              <label style={{marginTop: 16, display: 'block', color: '#b5bac1', fontSize: 12, fontWeight: 'bold'}}>MAX MESSAGE LENGTH</label>
+              <input type="number" value={maxMsgLength} onChange={e=>setMaxMsgLength(Number(e.target.value))} min="10" max="10000" style={{width: '100px'}} />
+
+              <div style={{background:'#2b2d31', padding:16, borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center', border: '1px solid #1e1f22', marginTop: 16, marginBottom: 24}}>
+                <div style={{display:'flex',flexDirection:'column'}}><strong style={{color:'#fff', fontSize:14}}>Swear Word Filter</strong><span style={{color:'#949ba4', fontSize:12, marginTop: 4}}>Automatically censor profanity in this server.</span></div>
+                <div onClick={()=>setProfanityFilter(!profanityFilter)} style={{width:40,height:24,background:profanityFilter?'#23a559':'#80848e',borderRadius:12,position:'relative',cursor:'pointer'}}><div style={{width:18,height:18,background:'#fff',borderRadius:'50%',position:'absolute',top:3,left:profanityFilter?19:3,transition:'0.3s'}}/></div>
+              </div>
+
+              <div style={{height: 1, background: '#1e1f22', margin: '24px 0'}}></div>
+
+              <h3 style={{color: '#fff', marginTop: 0}}>Banned Users</h3>
               <h3 style={{color: '#fff', marginTop: 0}}>Banned Users</h3>
               <p style={{color: '#949ba4', fontSize: 13}}>Manage users who have been banned from this server.</p>
               {bannedUsers.length === 0 ? <div style={{color: '#80848e', fontStyle: 'italic', padding: 16, textAlign: 'center', background: '#1e1f22', borderRadius: 8}}>No banned users.</div> : bannedUsers.map(u => (
