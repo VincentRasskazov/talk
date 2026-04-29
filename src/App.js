@@ -1283,10 +1283,10 @@ function DMContent({ dms, activeDM, setActiveDM, allUsers, theme, mobileNavOpen,
   const toggleSidebar = () => { if (window.innerWidth <= 768) { setMobileNavOpen(true); } else { setChannelsOpenPC(!channelsOpenPC); } };
 
   const sendMsg = async (e) => {
-    e.preventDefault(); if (!form.trim() && !file) return;
-    
-    const limit = server.maxMsgLength || 5000;
-    const text = form.trim().substring(0, limit);
+    e.preventDefault(); if (!form.trim() && !file) return;
+    
+    const limit = 5000; // Hardcoded limit for DMs
+    const text = form.trim().substring(0, limit);
 
     const isSuperAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
     if (text.startsWith('/clear ') && isSuperAdmin) {
