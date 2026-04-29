@@ -252,7 +252,12 @@ export default function App() {
         </div>
       )}
 
-      {(!user && !showAuth) && <div className="guest-banner">Previewing in Guest Mode. Login to chat and interact.</div>}
+      {(!user && !showAuth) && (
+        <div className="guest-banner" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', cursor: 'pointer' }} onClick={() => setShowAuth(true)}>
+          <span>Previewing in Guest Mode. Login to chat and interact.</span>
+          <button style={{ background: '#fff', color: '#1e1f22', border: 'none', padding: '4px 12px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Log In</button>
+        </div>
+      )}
 
       {userDoc && userDoc.banned ? (
         <div className="signin-container" style={{flexDirection: 'column', color: 'white'}}>
@@ -316,8 +321,7 @@ function AuthScreen({ themeColor, goBack }) {
   );
 }
 
-function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest }) {
-  const publicServers = allServers ? allServers.filter(s => s.isDiscoverable) : [];
+function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGuest, onLoginClick }) {  const publicServers = allServers ? allServers.filter(s => s.isDiscoverable) : [];
   const join = async (s) => {
     if(isGuest || !auth.currentUser) return alert("Log in to join servers!");
     if(s.banned && s.banned.includes(auth.currentUser.uid)) return alert("You are banned from this server.");
@@ -361,7 +365,11 @@ function DiscoveryContent({ allServers, setView, setCurrentServer, theme, isGues
     <div className="chat-container" style={{padding: '40px', overflowY: 'auto', background: '#313338'}}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '10px'}}>
         <h1 style={{color: 'white', margin: 0}}>🌍 Discover Public Servers</h1>
-        {!isGuest && <button onClick={joinWithCode} style={{background: theme, color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>🔑 Join via Invite Code</button>}
+        {!isGuest ? (
+          <button onClick={joinWithCode} style={{background: theme, color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>🔑 Join via Invite Code</button>
+        ) : (
+          <button onClick={onLoginClick} style={{background: theme, color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold'}}>Log In / Sign Up</button>
+        )}
       </div>
       <p style={{color: '#949ba4', marginBottom: 30, marginTop: 0}}>Find communities, join voice channels, and chat.</p>
       <div style={{display: 'flex', flexWrap: 'wrap', gap: '20px'}}>
@@ -742,7 +750,7 @@ function MainApp({ themeColor, setThemeColor, isGuest, onLoginClick, setZoomImag
           }}><div className="server-icon server-add-btn">+</div></div>}
         </div>
         {view === 'discovery' ? (
-          <DiscoveryContent allServers={allServers} setView={setView} setCurrentServer={setCurrentServer} theme={themeColor} isGuest={isGuest} />
+          <DiscoveryContent allServers={allServers} setView={setView} setCurrentServer={setCurrentServer} theme={themeColor} isGuest={isGuest} onLoginClick={onLoginClick} />
         ) : view === 'servers' && currentServer ? (
           <ServerContent server={currentServer} channel={currentChannel} setChannel={setCurrentChannel} isAdmin={isAdmin} isGuest={isGuest} theme={themeColor} onLoginClick={onLoginClick} mobileNavOpen={mobileNavOpen} setMobileNavOpen={setMobileNavOpen} closeAllMenus={closeAllMenus} channelsOpenPC={channelsOpenPC} setChannelsOpenPC={setChannelsOpenPC} allUsers={allUsers} openProfile={setSelectedUser} myData={currentUserData} openSettings={()=>setShowSettings(true)} setZoomImage={setZoomImage} editServer={() => setEditingServer(currentServer)} />
         ) : view === 'dms' && !isGuest ? (
